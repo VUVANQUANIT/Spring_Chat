@@ -17,6 +17,8 @@ import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -72,7 +74,10 @@ public class RefreshTokenService {
         currentToken.setReplacedByTokenHash(nextRefreshTokenHash);
         refreshTokenRepository.save(currentToken);
 
-        String accessToken = jwtService.generateToken(user.getUsername());
+        Set<String> roleNames = user.getRoles().stream()
+                .map(r -> r.getName().name())
+                .collect(java.util.stream.Collectors.toSet());
+        String accessToken = jwtService.generateToken(user.getUsername(), user.getId(), roleNames);
         return new LoginResponseDTO(
                 accessToken,
                 nextRawRefreshToken,
@@ -98,7 +103,10 @@ public class RefreshTokenService {
                 .build();
         refreshTokenRepository.save(refreshToken);
 
-        String accessToken = jwtService.generateToken(user.getUsername());
+        Set<String> roleNames = user.getRoles().stream()
+                .map(r -> r.getName().name())
+                .collect(java.util.stream.Collectors.toSet());
+        String accessToken = jwtService.generateToken(user.getUsername(), user.getId(), roleNames);
         return new LoginResponseDTO(
                 accessToken,
                 rawRefreshToken,
