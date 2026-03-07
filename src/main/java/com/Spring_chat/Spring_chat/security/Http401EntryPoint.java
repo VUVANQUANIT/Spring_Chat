@@ -1,6 +1,8 @@
 package com.Spring_chat.Spring_chat.security;
 
-import jakarta.servlet.ServletException;
+import com.Spring_chat.Spring_chat.exception.ApiErrorBuilder;
+import com.Spring_chat.Spring_chat.exception.ApiErrorResponse;
+import com.Spring_chat.Spring_chat.exception.ErrorCode;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -11,26 +13,21 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
-import java.time.LocalDateTime;
-import java.util.Map;
 
 @Component
 @RequiredArgsConstructor
 public class Http401EntryPoint implements AuthenticationEntryPoint {
+
     private final ObjectMapper objectMapper;
 
     @Override
-    public void commence(HttpServletRequest request, HttpServletResponse response, AuthenticationException authException) throws IOException, ServletException {
+    public void commence(HttpServletRequest request,
+                         HttpServletResponse response,
+                         AuthenticationException authException) throws IOException {
+        ApiErrorResponse body = ApiErrorBuilder.build(ErrorCode.UNAUTHORIZED, request.getRequestURI(), null);
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding("UTF-8");
-        Map<String,Object> body = Map.of(
-                "timestamp", LocalDateTime.now().toString(),
-                "status",401,
-                "error","Unauthorized",
-                "message","Chưa đăng nhập hoặc token không hợp lệ. Gửi Authorization: Bearer <access_token> hoặc dùng refresh token",
-                "path", request.getRequestURI()
-        );
         response.getWriter().write(objectMapper.writeValueAsString(body));
     }
 }

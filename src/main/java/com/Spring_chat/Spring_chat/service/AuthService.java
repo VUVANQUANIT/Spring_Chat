@@ -8,11 +8,11 @@ import com.Spring_chat.Spring_chat.dto.auth.RegisterRequestDTO;
 import com.Spring_chat.Spring_chat.entity.Role;
 import com.Spring_chat.Spring_chat.entity.User;
 import com.Spring_chat.Spring_chat.exception.AppException;
+import com.Spring_chat.Spring_chat.exception.ErrorCode;
 import com.Spring_chat.Spring_chat.repository.RoleRepository;
 import com.Spring_chat.Spring_chat.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -36,10 +36,10 @@ public class AuthService {
     @Transactional
     public LoginResponseDTO register(RegisterRequestDTO dto, String clientIp, String userAgent) {
         if (userRepository.existsByUsername(dto.getUsername())) {
-            throw new AppException(HttpStatus.CONFLICT, "Tên đăng nhập đã được sử dụng");
+            throw new AppException(ErrorCode.USERNAME_ALREADY_EXISTS);
         }
         if (userRepository.existsByEmail(dto.getEmail())) {
-            throw new AppException(HttpStatus.CONFLICT, "Email đã được sử dụng");
+            throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS);
         }
 
         Role defaultRole = roleRepository.findByName(RoleName.ROLE_USER)
@@ -73,10 +73,10 @@ public class AuthService {
         }
 
         if (user.getStatus() == UserStatus.BANNED) {
-            throw new AppException(HttpStatus.FORBIDDEN, "Tài khoản của bạn đã bị cấm");
+            throw new AppException(ErrorCode.ACCOUNT_BANNED);
         }
         if (user.getStatus() == UserStatus.INACTIVE) {
-            throw new AppException(HttpStatus.FORBIDDEN, "Tài khoản chưa được kích hoạt");
+            throw new AppException(ErrorCode.ACCOUNT_DISABLED);
         }
 
         log.debug("User logged in: {}", user.getUsername());
