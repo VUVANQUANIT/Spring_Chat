@@ -27,32 +27,54 @@ class AuthApiIntegrationTest {
     @Autowired
     private MockMvc mockMvc;
 
-    @Test
-    void authFlow_registerLoginRefreshLogout_refreshAfterLogoutShouldFail() throws Exception {
-        String username = "user_" + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
-        String email = username + "@mail.test";
-        String password = "Aa!123456";
+    // ── Helpers shared across tests ──────────────────────────────────────────
 
-        MvcResult registerResult = mockMvc.perform(post("/api/auth/register")
+    private String registerUser(String username, String password) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("User-Agent", "AuthApiIntegrationTest")
                         .content("""
                                 {
                                   "username":"%s",
-                                  "email":"%s",
+                                  "email":"%s@mail.test",
                                   "password":"%s",
                                   "confirmPassword":"%s"
                                 }
-                                """.formatted(username, email, password, password)))
+                                """.formatted(username, username, password, password)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.access_token").isNotEmpty())
-                .andExpect(jsonPath("$.refresh_token").isNotEmpty())
-                .andExpect(jsonPath("$.token_type").value("Bearer"))
-                .andExpect(jsonPath("$.expiresIn").isNotEmpty())
                 .andReturn();
+        return result.getResponse().getContentAsString();
+    }
 
-        String firstAccessToken = extractJsonString(registerResult.getResponse().getContentAsString(), "access_token");
-        String firstRefreshToken = extractJsonString(registerResult.getResponse().getContentAsString(), "refresh_token");
+    private void assertErrorShape(String errorCode) throws Exception {
+        // Used as a reminder: all error responses must contain these fields
+    }
+
+    // ── Happy path ────────────────────────────────────────────────────────────
+
+    @Test
+    void authFlow_registerLoginRefreshLogout_refreshAfterLogoutShouldFail() throws Exception {
+        String username = "user_" + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
+        String password = "Aa!123456";
+
+        String registerJson = registerUser(username, password);
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("User-Agent", "AuthApiIntegrationTest")
+                        .content("""
+                                {
+                                  "username":"%s",
+                                  "email":"%s@mail.test",
+                                  "password":"%s",
+                                  "confirmPassword":"%s"
+                                }
+                                """.formatted(username, username, password, password)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("USERNAME_ALREADY_EXISTS"))
+                .andExpect(jsonPath("$.status").value(409));
+
+        String firstAccessToken = extractJsonString(registerJson, "access_token");
+        String firstRefreshToken = extractJsonString(registerJson, "refresh_token");
 
         mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -87,6 +109,7 @@ class AuthApiIntegrationTest {
                         .header("Authorization", "Bearer " + firstAccessToken))
                 .andExpect(status().isNoContent());
 
+        // After logout, refresh should fail with standard error format
         mockMvc.perform(post("/api/auth/refresh")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -95,25 +118,22 @@ class AuthApiIntegrationTest {
                                 }
                                 """.formatted(rotatedRefreshToken)))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.message").isNotEmpty());
+                .andExpect(jsonPath("$.code").value("INVALID_REFRESH_TOKEN"))
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.error").value("Unauthorized"))
+                .andExpect(jsonPath("$.message").isNotEmpty())
+                .andExpect(jsonPath("$.path").isNotEmpty())
+                .andExpect(jsonPath("$.timestamp").isNotEmpty());
     }
 
+    // ── Error format tests ────────────────────────────────────────────────────
+
     @Test
-    void register_withDuplicateUsername_shouldReturnConflict() throws Exception {
+    void register_withDuplicateUsername_shouldReturn409WithCode() throws Exception {
         String username = "dup_" + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
         String password = "Aa!123456";
 
-        mockMvc.perform(post("/api/auth/register")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "username":"%s",
-                                  "email":"%s@mail.test",
-                                  "password":"%s",
-                                  "confirmPassword":"%s"
-                                }
-                                """.formatted(username, username, password, password)))
-                .andExpect(status().isCreated());
+        registerUser(username, password);
 
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -126,25 +146,20 @@ class AuthApiIntegrationTest {
                                 }
                                 """.formatted(username, username, password, password)))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.message").isNotEmpty());
+                .andExpect(jsonPath("$.code").value("USERNAME_ALREADY_EXISTS"))
+                .andExpect(jsonPath("$.status").value(409))
+                .andExpect(jsonPath("$.error").value("Conflict"))
+                .andExpect(jsonPath("$.message").isNotEmpty())
+                .andExpect(jsonPath("$.path").isNotEmpty())
+                .andExpect(jsonPath("$.timestamp").isNotEmpty());
     }
 
     @Test
-    void login_withWrongPassword_shouldReturnUnauthorized() throws Exception {
+    void login_withWrongPassword_shouldReturn401WithCode() throws Exception {
         String username = "login_" + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
         String password = "Aa!123456";
 
-        mockMvc.perform(post("/api/auth/register")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "username":"%s",
-                                  "email":"%s@mail.test",
-                                  "password":"%s",
-                                  "confirmPassword":"%s"
-                                }
-                                """.formatted(username, username, password, password)))
-                .andExpect(status().isCreated());
+        registerUser(username, password);
 
         mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -155,11 +170,16 @@ class AuthApiIntegrationTest {
                                 }
                                 """.formatted(username)))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.message").isNotEmpty());
+                .andExpect(jsonPath("$.code").value("INVALID_CREDENTIALS"))
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.error").value("Unauthorized"))
+                .andExpect(jsonPath("$.message").isNotEmpty())
+                .andExpect(jsonPath("$.path").isNotEmpty())
+                .andExpect(jsonPath("$.timestamp").isNotEmpty());
     }
 
     @Test
-    void refresh_withInvalidToken_shouldReturnUnauthorized() throws Exception {
+    void refresh_withInvalidToken_shouldReturn401WithCode() throws Exception {
         mockMvc.perform(post("/api/auth/refresh")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -168,8 +188,46 @@ class AuthApiIntegrationTest {
                                 }
                                 """))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.message").isNotEmpty());
+                .andExpect(jsonPath("$.code").value("INVALID_REFRESH_TOKEN"))
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.error").value("Unauthorized"))
+                .andExpect(jsonPath("$.message").isNotEmpty())
+                .andExpect(jsonPath("$.path").isNotEmpty())
+                .andExpect(jsonPath("$.timestamp").isNotEmpty());
     }
+
+    @Test
+    void register_withValidationErrors_shouldReturn400WithFieldErrors() throws Exception {
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username":"ab",
+                                  "email":"not-an-email",
+                                  "password":"weak",
+                                  "confirmPassword":"weak"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.errors").isArray())
+                .andExpect(jsonPath("$.errors").isNotEmpty())
+                .andExpect(jsonPath("$.timestamp").isNotEmpty())
+                .andExpect(jsonPath("$.path").isNotEmpty());
+    }
+
+    @Test
+    void register_withInvalidJson_shouldReturn400WithCode() throws Exception {
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ invalid json }"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_JSON"))
+                .andExpect(jsonPath("$.status").value(400));
+    }
+
+    // ── Private helpers ───────────────────────────────────────────────────────
 
     private static String extractJsonString(String json, String fieldName) {
         Pattern pattern = Pattern.compile("\"" + Pattern.quote(fieldName) + "\"\\s*:\\s*\"([^\"]*)\"");

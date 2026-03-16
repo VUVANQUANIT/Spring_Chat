@@ -1,21 +1,24 @@
 package com.Spring_chat.Spring_chat.exception;
 
-import org.springframework.http.HttpStatus;
-
 /**
- * Generic application exception that carries an HTTP status code.
- * Handled globally by {@link GlobalExceptionHandler}.
+ * Exception domain-level với ErrorCode tích hợp.
+ * Handled globally bởi {@link GlobalExceptionHandler}.
  */
 public class AppException extends RuntimeException {
 
-    private final HttpStatus status;
+    private final ErrorCode errorCode;
 
-    public AppException(HttpStatus status, String message) {
-        super(message);
-        this.status = status;
+    public AppException(ErrorCode errorCode) {
+        super(errorCode.getDefaultMessage());
+        this.errorCode = errorCode;
     }
 
-    public HttpStatus getStatus() {
-        return status;
+    public AppException(ErrorCode errorCode, String message) {
+        super(message);
+        this.errorCode = errorCode;
+    }
+
+    public ErrorCode getErrorCode() {
+        return errorCode;
     }
 }
