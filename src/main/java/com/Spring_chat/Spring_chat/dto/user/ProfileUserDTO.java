@@ -5,6 +5,6 @@ import lombok.Data;
 
 @Data
 public class ProfileUserDTO {
-    private String fullname;
+    private String fullName;
     private String avatarUrl;
 }

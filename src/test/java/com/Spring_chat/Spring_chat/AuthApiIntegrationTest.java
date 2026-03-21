@@ -12,6 +12,7 @@ import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -225,6 +226,56 @@ class AuthApiIntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_JSON"))
                 .andExpect(jsonPath("$.status").value(400));
+    }
+
+    @Test
+    void updateMyProfile_shouldReturnUpdatedProfileDto() throws Exception {
+        String username = "profile_" + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
+        String password = "Aa!123456";
+
+        String registerJson = registerUser(username, password);
+        String accessToken = extractJsonString(registerJson, "access_token");
+
+        mockMvc.perform(patch("/api/users/me")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "fullName":"Nguyen Van A",
+                                  "avatarUrl":"https://cdn.example.com/avatar.png"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("Profile updated successfully"))
+                .andExpect(jsonPath("$.data.username").value(username))
+                .andExpect(jsonPath("$.data.email").value(username + "@mail.test"))
+                .andExpect(jsonPath("$.data.fullName").value("Nguyen Van A"))
+                .andExpect(jsonPath("$.data.avatarUrl").value("https://cdn.example.com/avatar.png"))
+                .andExpect(jsonPath("$.timestamp").isNotEmpty());
+    }
+
+    @Test
+    void updateMyProfile_withInvalidAvatarUrl_shouldReturn400WithFieldErrors() throws Exception {
+        String username = "profile_" + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
+        String password = "Aa!123456";
+
+        String registerJson = registerUser(username, password);
+        String accessToken = extractJsonString(registerJson, "access_token");
+
+        mockMvc.perform(patch("/api/users/me")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "avatarUrl":"not-a-url"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.errors").isArray())
+                .andExpect(jsonPath("$.errors").isNotEmpty());
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────

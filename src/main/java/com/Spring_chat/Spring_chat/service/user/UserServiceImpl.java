@@ -3,6 +3,7 @@ package com.Spring_chat.Spring_chat.service.user;
 import com.Spring_chat.Spring_chat.dto.ApiResponse;
 import com.Spring_chat.Spring_chat.dto.user.MyProfileUserDTO;
 import com.Spring_chat.Spring_chat.dto.user.ProfileUserDTO;
+import com.Spring_chat.Spring_chat.dto.user.UpdateMyProfileRequestDTO;
 import com.Spring_chat.Spring_chat.entity.User;
 import com.Spring_chat.Spring_chat.exception.AppException;
 import com.Spring_chat.Spring_chat.exception.ErrorCode;
@@ -29,10 +30,31 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional(readOnly = true)
     public ApiResponse<MyProfileUserDTO> getMyProfile() {
-        AuthenticatedUser authenticatedUser =(AuthenticatedUser) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        Long userId = authenticatedUser.id();
-        User user = findUserOrThrow(userId);
+        User user = findCurrentUserOrThrow();
         return ApiResponse.ok("OK", userMapper.userToMyUserDTO(user));
+    }
+
+    @Override
+    @Transactional
+    public ApiResponse<MyProfileUserDTO> updateMyProfile(UpdateMyProfileRequestDTO request) {
+        User user = findCurrentUserOrThrow();
+
+        if (request.getFullName() != null) {
+            user.setFullName(request.getFullName().trim());
+        }
+
+        if (request.getAvatarUrl() != null) {
+            user.setAvatarUrl(request.getAvatarUrl().trim());
+        }
+
+        User savedUser = userRepository.save(user);
+        return ApiResponse.ok("Profile updated successfully", userMapper.userToMyUserDTO(savedUser));
+    }
+
+    private User findCurrentUserOrThrow() {
+        AuthenticatedUser authenticatedUser =
+                (AuthenticatedUser) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        return findUserOrThrow(authenticatedUser.id());
     }
 
     private User findUserOrThrow(Long id) {
