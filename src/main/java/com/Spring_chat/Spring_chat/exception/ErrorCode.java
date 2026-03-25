@@ -29,6 +29,7 @@ public enum ErrorCode {
     HAS_FRIEND(HttpStatus.CONFLICT,"Đã là bạn bè"),
     // 422 BUSINESS_RULE_VIOLATED
     BUSINESS_RULE_VIOLATED(HttpStatus.UNPROCESSABLE_CONTENT,"Không gửi được lời mới cho chính mình"),
+
     // ── 500 Internal Server Error ─────────────────────────────────────────────
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "Lỗi hệ thống, vui lòng thử lại sau");
 

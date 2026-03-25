@@ -1,6 +1,7 @@
 package com.Spring_chat.Spring_chat.controller.friendship;
 
 import com.Spring_chat.Spring_chat.dto.ApiResponse;
+import com.Spring_chat.Spring_chat.dto.friendship.AcceptFriendResponseDTO;
 import com.Spring_chat.Spring_chat.dto.friendship.FriendRequestCreateRequestDTO;
 import com.Spring_chat.Spring_chat.dto.friendship.FriendRequestResponseDTO;
 import com.Spring_chat.Spring_chat.dto.friendship.FriendResponseDTO;
@@ -8,11 +9,7 @@ import com.Spring_chat.Spring_chat.service.friendship.FriendShipService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
@@ -33,5 +30,9 @@ public class FriendShipController {
     @GetMapping("/requests/sent")
     public ResponseEntity<ApiResponse<List<FriendResponseDTO>>> getSentRequestFriendShip(){
         return ResponseEntity.ok(friendShipService.getSentFriendRequests());
+    }
+    @PostMapping("/requests/{id}/accept")
+    public ResponseEntity<ApiResponse<AcceptFriendResponseDTO>> acceptRequestFriendShip(@PathVariable("id") Long id){
+        return ResponseEntity.ok(friendShipService.acceptFriend(id));
     }
 }

@@ -3,6 +3,7 @@ package com.Spring_chat.Spring_chat.service.friendship;
 import com.Spring_chat.Spring_chat.ENUM.FriendshipStatus;
 import com.Spring_chat.Spring_chat.ENUM.UserStatus;
 import com.Spring_chat.Spring_chat.dto.ApiResponse;
+import com.Spring_chat.Spring_chat.dto.friendship.AcceptFriendResponseDTO;
 import com.Spring_chat.Spring_chat.dto.friendship.FriendRequestCreateRequestDTO;
 import com.Spring_chat.Spring_chat.dto.friendship.FriendRequestResponseDTO;
 import com.Spring_chat.Spring_chat.dto.friendship.FriendResponseDTO;
@@ -15,10 +16,15 @@ import com.Spring_chat.Spring_chat.repository.FriendshipRepository;
 import com.Spring_chat.Spring_chat.repository.UserRepository;
 import com.Spring_chat.Spring_chat.service.common.CurrentUserProvider;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.List;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class FriendShipServiceImpl implements FriendShipService {
@@ -28,6 +34,7 @@ public class FriendShipServiceImpl implements FriendShipService {
     private final FriendShipMapper friendShipMapper;
 
     @Override
+    @Transactional
     public ApiResponse<FriendRequestResponseDTO> sendRequestFriend(FriendRequestCreateRequestDTO friendRequestCreateRequestDTO) {
         User user = currentUserProvider.findCurrentUserOrThrow();
         User user1 = currentUserProvider.findUserOrThrow(friendRequestCreateRequestDTO.getAddresseeId());
@@ -91,5 +98,37 @@ public class FriendShipServiceImpl implements FriendShipService {
             return ApiResponse.ok("Không có lời mời đã gửi", responseDTOS);
         }
         return ApiResponse.ok("Danh sách lời mời đã gửi", responseDTOS);
+    }
+
+    @Override
+    @Transactional
+    public ApiResponse<AcceptFriendResponseDTO> acceptFriend(Long id) {
+        User user = currentUserProvider.findCurrentUserOrThrow();
+
+        Friendship friendship = friendshipRepository.findById(id).orElseThrow(
+                () -> new AppException(ErrorCode.RESOURCE_NOT_FOUND," Friendship ID không tồn tại")
+        );
+        log.info("Search ID Friendship: {}", friendship.getId());
+        if (!friendship.getStatus().equals(FriendshipStatus.PENDING)) {
+            throw new AppException(ErrorCode.BUSINESS_RULE_VIOLATED,"Trạng thái lời mời phải là Pending");
+        }
+        log.info("Status Friendship id {} : {}", friendship.getId(), friendship.getStatus());
+        if(!friendship.getAddressee().getId().equals(user.getId())){
+            throw new AppException(ErrorCode.BUSINESS_RULE_VIOLATED,"Người nhận phải là mới có thể chấp nhận lời mời");
+        }
+
+        friendship.setStatus(FriendshipStatus.ACCEPTED);
+        friendship.setUpdatedAt(Instant.now());
+        friendshipRepository.save(friendship);
+        log.info("Status Friendship id {} : {}", friendship.getId(), friendship.getStatus());
+
+        AcceptFriendResponseDTO responseDTO = new AcceptFriendResponseDTO();
+        responseDTO.setId(friendship.getId());
+        responseDTO.setStatus(FriendshipStatus.ACCEPTED);
+        responseDTO.setUpdatedAt(friendship.getUpdatedAt());
+        log.info("AcceptFriendResponseDTO {}", responseDTO);
+
+        ApiResponse<AcceptFriendResponseDTO> response = new ApiResponse<>();
+        return response.ok("Friend request accepted", responseDTO);
     }
 }
