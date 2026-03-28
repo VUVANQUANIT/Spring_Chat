@@ -101,23 +101,12 @@ public class FriendShipServiceImpl implements FriendShipService {
     @Transactional
     public ApiResponse<AcceptFriendResponseDTO> acceptFriend(Long id) {
         User user = currentUserProvider.findCurrentUserOrThrow();
-
-        Friendship friendship = friendshipRepository.findById(id).orElseThrow(
-                () -> new AppException(ErrorCode.RESOURCE_NOT_FOUND," Friendship ID không tồn tại")
+        Friendship friendship = requirePendingAddressee(
+                id,
+                user,
+                "Người nhận phải là mới có thể chấp nhận lời mời"
         );
-        log.info("Search ID Friendship: {}", friendship.getId());
-        if (!friendship.getStatus().equals(FriendshipStatus.PENDING)) {
-            throw new AppException(ErrorCode.BUSINESS_RULE_VIOLATED,"Trạng thái lời mời phải là Pending");
-        }
-        log.info("Status Friendship id {} : {}", friendship.getId(), friendship.getStatus());
-        if(!friendship.getAddressee().getId().equals(user.getId())){
-            throw new AppException(ErrorCode.BUSINESS_RULE_VIOLATED,"Người nhận phải là mới có thể chấp nhận lời mời");
-        }
-
-        friendship.setStatus(FriendshipStatus.ACCEPTED);
-        friendship.setUpdatedAt(Instant.now());
-        friendshipRepository.save(friendship);
-        log.info("Status Friendship id {} : {}", friendship.getId(), friendship.getStatus());
+        updateStatus(friendship, FriendshipStatus.ACCEPTED);
 
         AcceptFriendResponseDTO responseDTO = new AcceptFriendResponseDTO();
         responseDTO.setId(friendship.getId());
@@ -132,23 +121,12 @@ public class FriendShipServiceImpl implements FriendShipService {
     @Transactional
     public ApiResponse<RejectFriendResponseDTO> rejectFriendShip(Long id){
         User user = currentUserProvider.findCurrentUserOrThrow();
-
-        Friendship friendship = friendshipRepository.findById(id).orElseThrow(
-                () -> new AppException(ErrorCode.RESOURCE_NOT_FOUND," Friendship ID không tồn tại")
+        Friendship friendship = requirePendingAddressee(
+                id,
+                user,
+                "Người nhận phải là mới có thể từ chối lời mời"
         );
-        log.info("Search ID Friendship: {}", friendship.getId());
-        if (!friendship.getStatus().equals(FriendshipStatus.PENDING)) {
-            throw new AppException(ErrorCode.BUSINESS_RULE_VIOLATED,"Trạng thái lời mời phải là Pending");
-        }
-        log.info("Status Friendship id {} : {}", friendship.getId(), friendship.getStatus());
-        if(!friendship.getAddressee().getId().equals(user.getId())){
-            throw new AppException(ErrorCode.BUSINESS_RULE_VIOLATED,"Người nhận phải là mới có thể từ chối lời mời");
-        }
-
-        friendship.setStatus(FriendshipStatus.REJECTED);
-        friendship.setUpdatedAt(Instant.now());
-        friendshipRepository.save(friendship);
-        log.info("Status Friendship id {} : {}", friendship.getId(), friendship.getStatus());
+        updateStatus(friendship, FriendshipStatus.REJECTED);
         RejectFriendResponseDTO responseDTO = new RejectFriendResponseDTO();
         responseDTO.setId(friendship.getId());
         responseDTO.setUpdatedAt(friendship.getUpdatedAt());
@@ -157,4 +135,25 @@ public class FriendShipServiceImpl implements FriendShipService {
         return response.ok("Friend request rejected", responseDTO);
     }
 
+    private Friendship requirePendingAddressee(Long id, User user, String notAddresseeMessage) {
+        Friendship friendship = friendshipRepository.findById(id).orElseThrow(
+                () -> new AppException(ErrorCode.RESOURCE_NOT_FOUND, " Friendship ID không tồn tại")
+        );
+        log.info("Search ID Friendship: {}", friendship.getId());
+        if (!friendship.getStatus().equals(FriendshipStatus.PENDING)) {
+            throw new AppException(ErrorCode.BUSINESS_RULE_VIOLATED, "Trạng thái lời mời phải là Pending");
+        }
+        log.info("Status Friendship id {} : {}", friendship.getId(), friendship.getStatus());
+        if (!friendship.getAddressee().getId().equals(user.getId())) {
+            throw new AppException(ErrorCode.BUSINESS_RULE_VIOLATED, notAddresseeMessage);
+        }
+        return friendship;
+    }
+
+    private void updateStatus(Friendship friendship, FriendshipStatus status) {
+        friendship.setStatus(status);
+        friendship.setUpdatedAt(Instant.now());
+        friendshipRepository.save(friendship);
+        log.info("Status Friendship id {} : {}", friendship.getId(), friendship.getStatus());
+    }
 }
