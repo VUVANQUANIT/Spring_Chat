@@ -169,6 +169,24 @@ public class FriendShipServiceImpl implements FriendShipService {
         return ApiResponse.ok("User blocked", dto);
     }
 
+    @Override
+    @Transactional
+    public ApiResponse<String> deleteFriendship(Long id) {
+        User currentUser = currentUserProvider.findCurrentUserOrThrow();
+        User target = currentUserProvider.findUserOrThrow(id);
+        if (target.getId().equals(currentUser.getId())) {
+            throw new AppException(ErrorCode.CANNOT_DELETE_SELF,"Không thể tự xoá chính mình");
+        }
+        Friendship friendship = friendshipRepository
+                .findBetweenUsers(currentUser.getId(),target.getId()).orElseThrow(
+                        () -> new   AppException(ErrorCode.RESOURCE_NOT_FOUND,"Bạn chưa phải bạn bẻ")
+                );
+
+
+        friendshipRepository.delete(friendship);
+        return ApiResponse.ok("Friendship deleted", null);
+    }
+
 
     private Friendship requirePendingAddressee(Long id, User user, String notAddresseeMessage) {
         Friendship friendship = friendshipRepository.findById(id).orElseThrow(

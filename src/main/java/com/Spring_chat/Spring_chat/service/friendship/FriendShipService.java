@@ -12,4 +12,5 @@ public interface FriendShipService {
     ApiResponse<AcceptFriendResponseDTO> acceptFriend(Long id);
     ApiResponse<RejectFriendResponseDTO> rejectFriendShip(Long id);
     ApiResponse<FriendResponseBlockDTO> blockFriendship(Long id);
+    ApiResponse<String>deleteFriendship(Long id);
 }

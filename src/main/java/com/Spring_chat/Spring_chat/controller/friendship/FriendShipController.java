@@ -40,4 +40,8 @@ public class FriendShipController {
     public ResponseEntity<ApiResponse<FriendResponseBlockDTO>> blockFriendship(@PathVariable("userId") Long id){
         return ResponseEntity.ok(friendShipService.blockFriendship(id));
     }
+    @DeleteMapping("/{id}")
+    public ResponseEntity<ApiResponse<String>> deleteFriendship(@PathVariable("id") Long id){
+        return ResponseEntity.ok(friendShipService.deleteFriendship(id));
+    }
 }
