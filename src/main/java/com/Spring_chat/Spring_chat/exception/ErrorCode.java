@@ -25,7 +25,10 @@ public enum ErrorCode {
     // ── 409 Conflict ──────────────────────────────────────────────────────────
     USERNAME_ALREADY_EXISTS(HttpStatus.CONFLICT, "Tên đăng nhập đã được sử dụng"),
     EMAIL_ALREADY_EXISTS(HttpStatus.CONFLICT, "Email đã được sử dụng"),
-
+    FRIENDSHIP_REQUEST_EXISTS(HttpStatus.CONFLICT,"Đã gửi lời mởi kết bạn"),
+    HAS_FRIEND(HttpStatus.CONFLICT,"Đã là bạn bè"),
+    // 422 BUSINESS_RULE_VIOLATED
+    BUSINESS_RULE_VIOLATED(HttpStatus.UNPROCESSABLE_CONTENT,"Không gửi được lời mới cho chính mình"),
     // ── 500 Internal Server Error ─────────────────────────────────────────────
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "Lỗi hệ thống, vui lòng thử lại sau");
 
