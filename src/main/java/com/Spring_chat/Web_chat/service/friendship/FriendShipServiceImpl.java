@@ -1,8 +1,10 @@
 package com.Spring_chat.Web_chat.service.friendship;
 
+import com.Spring_chat.Web_chat.ENUM.FriendDirection;
 import com.Spring_chat.Web_chat.ENUM.FriendshipStatus;
 import com.Spring_chat.Web_chat.ENUM.UserStatus;
 import com.Spring_chat.Web_chat.dto.ApiResponse;
+import com.Spring_chat.Web_chat.dto.PageResponse;
 import com.Spring_chat.Web_chat.dto.friendship.*;
 import com.Spring_chat.Web_chat.entity.Friendship;
 import com.Spring_chat.Web_chat.entity.User;
@@ -14,11 +16,12 @@ import com.Spring_chat.Web_chat.repository.UserRepository;
 import com.Spring_chat.Web_chat.service.common.CurrentUserProvider;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.List;
 
 @Slf4j
 @Service
@@ -71,29 +74,26 @@ public class FriendShipServiceImpl implements FriendShipService {
     }
 
     @Override
-    public ApiResponse<List<FriendResponseDTO>> getFriendRequests() {
-        User user = currentUserProvider.findCurrentUserOrThrow();
-        List<FriendResponseDTO> responseDTOS = friendshipRepository.findAllRequestFriends(
-                user.getId(),
-                FriendshipStatus.PENDING
-        );
-        if (responseDTOS.isEmpty()) {
-            return ApiResponse.ok("Không có lời mời kết bạn", responseDTOS);
-        }
-        return ApiResponse.ok("Danh sách lời mời kết bạn", responseDTOS);
-    }
+    public ApiResponse<PageResponse<FriendResponseDTO>> getFriendRequests(
+            FriendshipStatus status,
+            FriendDirection direction,
+            int page,
+            int size) {
 
-    @Override
-    public ApiResponse<List<FriendResponseDTO>> getSentFriendRequests() {
         User user = currentUserProvider.findCurrentUserOrThrow();
-        List<FriendResponseDTO> responseDTOS = friendshipRepository.findAllSentRequestFriends(
+
+        // RECEIVED = mình là addressee; SENT = mình là requester
+        boolean received = (direction == FriendDirection.RECEIVED);
+
+        Page<FriendResponseDTO> resultPage = friendshipRepository.findRequests(
                 user.getId(),
-                FriendshipStatus.PENDING
+                received,
+                status,                     // null → không lọc status
+                PageRequest.of(page, size)
         );
-        if (responseDTOS.isEmpty()) {
-            return ApiResponse.ok("Không có lời mời đã gửi", responseDTOS);
-        }
-        return ApiResponse.ok("Danh sách lời mời đã gửi", responseDTOS);
+
+        PageResponse<FriendResponseDTO> pageResponse = PageResponse.of(resultPage.getContent(), resultPage);
+        return ApiResponse.ok("OK", pageResponse);
     }
 
     @Override

@@ -3,38 +3,34 @@ package com.Spring_chat.Web_chat.repository;
 import com.Spring_chat.Web_chat.dto.friendship.FriendResponseDTO;
 import com.Spring_chat.Web_chat.entity.Friendship;
 import com.Spring_chat.Web_chat.entity.User;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import com.Spring_chat.Web_chat.ENUM.FriendshipStatus;
 
-import java.util.List;
 import java.util.Optional;
 
 
 @Repository
 public interface FriendshipRepository extends JpaRepository<Friendship, Long> {
-    boolean existsByRequester_IdAndAddressee_IdAndStatus(Long requesterId, Long addresseeId, FriendshipStatus status);
-    @Query("""
-    select new com.Spring_chat.Web_chat.dto.friendship.FriendResponseDTO(
-        f.id,
-        f.requester.id,
-        f.requester.username,
-        f.requester.avatarUrl,
-        f.addressee.id,
-        f.addressee.username,
-        f.addressee.avatarUrl,
-        f.status,
-        f.createdAt,
-        f.updatedAt
-    )
-    from Friendship f
-    where f.addressee.id = :id
-    and f.status = :status
-    """)
-    List<FriendResponseDTO> findAllRequestFriends(@Param("id") Long id, @Param("status") FriendshipStatus status);
 
+    boolean existsByRequester_IdAndAddressee_IdAndStatus(Long requesterId, Long addresseeId, FriendshipStatus status);
+
+    // ─── Unified pageable query (spec 3.2) ───────────────────────────────────
+
+    /**
+     * Lấy danh sách friend requests với filter linh hoạt.
+     *
+     * @param userId   ID của user hiện tại
+     * @param received true  → direction=RECEIVED (mình là addressee)
+     *                 false → direction=SENT     (mình là requester)
+     * @param status   null  → không lọc theo status (tất cả)
+     *                 not-null → chỉ lấy bản ghi có status đó
+     * @param pageable Spring Pageable (page, size, sort)
+     */
     @Query("""
     select new com.Spring_chat.Web_chat.dto.friendship.FriendResponseDTO(
         f.id,
@@ -49,12 +45,20 @@ public interface FriendshipRepository extends JpaRepository<Friendship, Long> {
         f.updatedAt
     )
     from Friendship f
-    where f.requester.id = :id
-    and f.status = :status
+    where ((:received = true  and f.addressee.id  = :userId)
+        or (:received = false and f.requester.id  = :userId))
+    and (:status is null or f.status = :status)
+    order by f.createdAt DESC
     """)
-    List<FriendResponseDTO> findAllSentRequestFriends(@Param("id") Long id, @Param("status") FriendshipStatus status);
+    Page<FriendResponseDTO> findRequests(
+            @Param("userId")   Long userId,
+            @Param("received") boolean received,
+            @Param("status")   FriendshipStatus status,
+            Pageable pageable
+    );
 
     Friendship findByRequesterAndAddressee(User requester, User addressee);
+
     @Query("""
     SELECT f FROM Friendship f
     WHERE (f.requester.id = :userAId AND f.addressee.id = :userBId)
