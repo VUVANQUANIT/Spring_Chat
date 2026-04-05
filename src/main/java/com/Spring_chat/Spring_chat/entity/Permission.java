@@ -21,7 +21,7 @@ import lombok.Setter;
 @AllArgsConstructor
 @Builder
 @Entity
-@Table(name = "permission")
+@Table(name = "permissions")
 public class Permission {
 
     @Id
@@ -30,9 +30,9 @@ public class Permission {
     private Long id;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "\"name\"", unique = true, nullable = false, length = 50)
+    @Column(name = "name", unique = true, nullable = false, length = 50)
     private PermissionName name;
 
-    @Column(name = "\"description\"", length = 255)
+    @Column(name = "description", length = 255)
     private String description;
 }

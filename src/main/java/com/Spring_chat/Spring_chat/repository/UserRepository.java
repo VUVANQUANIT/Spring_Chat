@@ -37,54 +37,54 @@ public interface UserRepository extends JpaRepository<User, Long> {
             SELECT
                 u.id                                         AS "id",
                 u.username                                   AS "username",
-                u."fullName"                                 AS "fullName",
-                u."avatarUrl"                                AS "avatarUrl",
+                u.full_name                                  AS "fullName",
+                u.avatar_url                                 AS "avatarUrl",
                 CASE
                     WHEN EXISTS (
-                        SELECT 1 FROM "Friendship" f
+                        SELECT 1 FROM friendships f
                         WHERE (
-                            (f."requesterId" = :me AND f."addresseeId" = u.id)
-                         OR (f."requesterId" = u.id AND f."addresseeId" = :me)
+                            (f.requester_id = :me AND f.addressee_id = u.id)
+                         OR (f.requester_id = u.id AND f.addressee_id = :me)
                         )
                         AND f.status = 'ACCEPTED'
                     ) THEN 'FRIENDS'
                     WHEN EXISTS (
-                        SELECT 1 FROM "Friendship" f
-                        WHERE f."requesterId" = :me
-                          AND f."addresseeId" = u.id
+                        SELECT 1 FROM friendships f
+                        WHERE f.requester_id = :me
+                          AND f.addressee_id = u.id
                           AND f.status = 'PENDING'
                     ) THEN 'PENDING_SENT'
                     WHEN EXISTS (
-                        SELECT 1 FROM "Friendship" f
-                        WHERE f."requesterId" = u.id
-                          AND f."addresseeId" = :me
+                        SELECT 1 FROM friendships f
+                        WHERE f.requester_id = u.id
+                          AND f.addressee_id = :me
                           AND f.status = 'PENDING'
                     ) THEN 'PENDING_RECEIVED'
                     ELSE 'NONE'
                 END AS "friendRelation"
-            FROM "User" u
-            WHERE u.id         != :me
-              AND u.status      = 'ACTIVE'
-              AND (u.username ILIKE :q OR u."fullName" ILIKE :q)
+            FROM users u
+            WHERE u.id     != :me
+              AND u.status  = 'ACTIVE'
+              AND (u.username ILIKE :q OR u.full_name ILIKE :q)
               AND NOT EXISTS (
-                  SELECT 1 FROM "Friendship" f
-                  WHERE f.status        = 'BLOCKED'
-                    AND f."requesterId" = u.id
-                    AND f."addresseeId" = :me
+                  SELECT 1 FROM friendships f
+                  WHERE f.status       = 'BLOCKED'
+                    AND f.requester_id = u.id
+                    AND f.addressee_id = :me
               )
             ORDER BY u.username ASC
             """,
         countQuery = """
             SELECT COUNT(u.id)
-            FROM "User" u
-            WHERE u.id         != :me
-              AND u.status      = 'ACTIVE'
-              AND (u.username ILIKE :q OR u."fullName" ILIKE :q)
+            FROM users u
+            WHERE u.id     != :me
+              AND u.status  = 'ACTIVE'
+              AND (u.username ILIKE :q OR u.full_name ILIKE :q)
               AND NOT EXISTS (
-                  SELECT 1 FROM "Friendship" f
-                  WHERE f.status        = 'BLOCKED'
-                    AND f."requesterId" = u.id
-                    AND f."addresseeId" = :me
+                  SELECT 1 FROM friendships f
+                  WHERE f.status       = 'BLOCKED'
+                    AND f.requester_id = u.id
+                    AND f.addressee_id = :me
               )
             """,
         nativeQuery = true

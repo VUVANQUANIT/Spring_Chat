@@ -28,13 +28,13 @@ import java.time.Instant;
 @Builder
 @Entity
 @Table(
-        name = "RefreshToken",
+        name = "refresh_tokens",
         uniqueConstraints = {
-                @UniqueConstraint(name = "unique_refresh_token_hash", columnNames = {"tokenHash"})
+                @UniqueConstraint(name = "unique_refresh_token_hash", columnNames = {"token_hash"})
         },
         indexes = {
-                @Index(name = "idx_refresh_token_user_id", columnList = "userId"),
-                @Index(name = "idx_refresh_token_expires_at", columnList = "expiresAt")
+                @Index(name = "idx_refresh_token_user_id", columnList = "user_id"),
+                @Index(name = "idx_refresh_token_expires_at", columnList = "expires_at")
         }
 )
 public class RefreshToken {
@@ -45,33 +45,33 @@ public class RefreshToken {
     private Long id;
 
     @Version
-    @Column(name = "\"version\"", nullable = false)
+    @Column(name = "version", nullable = false)
     private Long version;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "\"userId\"", nullable = false)
+    @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @Column(name = "\"tokenHash\"", nullable = false, length = 255)
+    @Column(name = "token_hash", nullable = false, length = 255)
     private String tokenHash;
 
-    @Column(name = "\"expiresAt\"", nullable = false)
+    @Column(name = "expires_at", nullable = false)
     private Instant expiresAt;
 
-    @Column(name = "\"revokedAt\"")
+    @Column(name = "revoked_at")
     private Instant revokedAt;
 
-    @Column(name = "\"replacedByTokenHash\"", length = 255)
+    @Column(name = "replaced_by_token_hash", length = 255)
     private String replacedByTokenHash;
 
-    @Column(name = "\"createdByIp\"", length = 45)
+    @Column(name = "created_by_ip", length = 45)
     private String createdByIp;
 
-    @Column(name = "\"userAgent\"", length = 255)
+    @Column(name = "user_agent", length = 255)
     private String userAgent;
 
     @CreationTimestamp
-    @Column(name = "\"createdAt\"", nullable = false, updatable = false)
+    @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
     public boolean isRevoked() {

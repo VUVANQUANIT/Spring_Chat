@@ -28,7 +28,7 @@ import java.util.Set;
 @AllArgsConstructor
 @Builder
 @Entity
-@Table(name = "role")
+@Table(name = "roles")
 public class Role {
 
     @Id
@@ -37,18 +37,18 @@ public class Role {
     private Long id;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "\"name\"", unique = true, nullable = false, length = 30)
+    @Column(name = "name", unique = true, nullable = false, length = 30)
     private RoleName name;
 
-    @Column(name = "\"description\"", length = 255)
+    @Column(name = "description", length = 255)
     private String description;
 
     @Builder.Default
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
-            name = "role_permission",
-            joinColumns = @JoinColumn(name = "\"roleId\""),
-            inverseJoinColumns = @JoinColumn(name = "\"permissionId\"")
+            name = "role_permissions",
+            joinColumns = @JoinColumn(name = "role_id"),
+            inverseJoinColumns = @JoinColumn(name = "permission_id")
     )
     private Set<Permission> permissions = new HashSet<>();
 }

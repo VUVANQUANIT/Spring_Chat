@@ -32,8 +32,8 @@ import java.util.Set;
 @AllArgsConstructor
 @Builder
 @Entity
-@Table(name = "\"User\"")
-@Check(constraints = "\"status\" IN ('ACTIVE', 'INACTIVE', 'BANNED')")
+@Table(name = "users")
+@Check(constraints = "status IN ('ACTIVE', 'INACTIVE', 'BANNED')")
 public class User {
 
     @Id
@@ -41,43 +41,43 @@ public class User {
     @Column(name = "id")
     private Long id;
 
-    @Column(name = "\"username\"", nullable = false, unique = true, length = 50)
+    @Column(name = "username", nullable = false, unique = true, length = 50)
     private String username;
 
-    @Column(name = "\"email\"", nullable = false, unique = true, length = 255)
+    @Column(name = "email", nullable = false, unique = true, length = 255)
     private String email;
 
-    @Column(name = "\"passwordHash\"", nullable = false, length = 255)
+    @Column(name = "password_hash", nullable = false, length = 255)
     private String passwordHash;
 
-    @Column(name = "\"fullName\"", length = 100)
+    @Column(name = "full_name", length = 100)
     private String fullName;
 
-    @Column(name = "\"avatarUrl\"")
+    @Column(name = "avatar_url")
     private String avatarUrl;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "\"status\"", nullable = false, length = 20)
+    @Column(name = "status", nullable = false, length = 20)
     @Builder.Default
     private UserStatus status = UserStatus.ACTIVE;
 
-    @Column(name = "\"lastSeen\"")
+    @Column(name = "last_seen")
     private Instant lastSeen;
 
     @CreationTimestamp
-    @Column(name = "\"createdAt\"", nullable = false, updatable = false)
+    @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
     @UpdateTimestamp
-    @Column(name = "\"updatedAt\"", nullable = false)
+    @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
     @Builder.Default
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
-            name = "user_role",
-            joinColumns = @JoinColumn(name = "\"userId\""),
-            inverseJoinColumns = @JoinColumn(name = "\"roleId\"")
+            name = "user_roles",
+            joinColumns = @JoinColumn(name = "user_id"),
+            inverseJoinColumns = @JoinColumn(name = "role_id")
     )
     private Set<Role> roles = new HashSet<>();
 }

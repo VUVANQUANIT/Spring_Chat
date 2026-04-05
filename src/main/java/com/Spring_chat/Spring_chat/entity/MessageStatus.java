@@ -30,12 +30,12 @@ import java.time.Instant;
 @Builder
 @Entity
 @Table(
-        name = "MessageStatus",
+        name = "message_statuses",
         uniqueConstraints = {
-                @UniqueConstraint(name = "unique_message_status", columnNames = {"messageId", "userId"})
+                @UniqueConstraint(name = "unique_message_status", columnNames = {"message_id", "user_id"})
         }
 )
-@Check(constraints = "\"status\" IN ('SENT', 'DELIVERED', 'SEEN')")
+@Check(constraints = "status IN ('SENT', 'DELIVERED', 'SEEN')")
 public class MessageStatus {
 
     @Id
@@ -44,18 +44,18 @@ public class MessageStatus {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "\"messageId\"", nullable = false)
+    @JoinColumn(name = "message_id", nullable = false)
     private Message message;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "\"userId\"", nullable = false)
+    @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "\"status\"", nullable = false, length = 20)
+    @Column(name = "status", nullable = false, length = 20)
     private MessageDeliveryStatus status;
 
     @UpdateTimestamp
-    @Column(name = "\"updatedAt\"", nullable = false)
+    @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 }

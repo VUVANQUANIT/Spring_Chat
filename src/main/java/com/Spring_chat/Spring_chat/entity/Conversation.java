@@ -25,8 +25,8 @@ import java.time.Instant;
 @AllArgsConstructor
 @Builder
 @Entity
-@Table(name = "Conversation")
-@Check(constraints = "\"type\" IN ('PRIVATE', 'GROUP')")
+@Table(name = "conversations")
+@Check(constraints = "type IN ('PRIVATE', 'GROUP')")
 public class Conversation {
 
     @Id
@@ -35,11 +35,11 @@ public class Conversation {
     private Long id;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "\"type\"", nullable = false, length = 20)
+    @Column(name = "type", nullable = false, length = 20)
     @Builder.Default
     private ConversationType type = ConversationType.PRIVATE;
 
     @CreationTimestamp
-    @Column(name = "\"createdAt\"", nullable = false, updatable = false)
+    @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 }
