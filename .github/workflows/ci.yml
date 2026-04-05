@@ -1,0 +1,145 @@
+# =============================================================================
+# CI — Continuous Integration
+# Chạy mỗi khi có code push lên main/dev hoặc mở Pull Request vào main/dev
+#
+# Pipeline gồm 2 jobs chạy tuần tự:
+#   1. build-and-test  : Compile + chạy unit tests với PostgreSQL thật
+#   2. docker-build    : Build Docker image + push lên GitHub Container Registry
+# =============================================================================
+
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+# Nếu có push mới trong khi CI đang chạy, hủy job cũ để tiết kiệm resource
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  JAVA_VERSION: '21'
+  REGISTRY: ghcr.io
+  # github.repository = "username/repo-name" — dùng làm tên Docker image
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job 1: Build & Test
+  # ---------------------------------------------------------------------------
+  build-and-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+
+    # Khởi động PostgreSQL như một service container (chạy song song với job)
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: spring_chat_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        # Health check — đợi postgres sẵn sàng mới chạy các steps tiếp theo
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          # Cache Maven local repository (~/.m2) — tăng tốc build đáng kể
+          cache: maven
+
+      - name: Build & run tests
+        env:
+          # Inject biến môi trường cho Spring Boot trong CI
+          # Tên biến phải khớp với ${...} trong application.properties
+          DATABASE_URL: jdbc:postgresql://localhost:5432/spring_chat_test
+          DATABASE_USERNAME: postgres
+          DATABASE_PASSWORD: postgres
+          # Dùng create-drop: tự tạo schema khi start, xóa khi shutdown (chỉ trong test)
+          SPRING_JPA_HIBERNATE_DDL_AUTO: create-drop
+          # JWT secret phải đủ dài (≥ 256 bit) — đây là giá trị giả cho CI
+          JWT_SECRET: ci-test-secret-key-this-must-be-at-least-256-bits-long-for-hs256
+          JWT_EXPIRATION: 86400000
+          JWT_REFRESH_EXPIRATION: 604800000
+          SERVER_PORT: 8080
+        run: ./mvnw verify -B --no-transfer-progress
+
+      # Lưu test reports để xem trên GitHub UI (dù pass hay fail)
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ github.run_number }}
+          path: target/surefire-reports/
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # Job 2: Build Docker Image & Push lên GitHub Container Registry (GHCR)
+  # Chỉ chạy khi:
+  #   - Job build-and-test thành công
+  #   - Là push (không phải Pull Request) — PR chỉ cần verify code, không deploy
+  # ---------------------------------------------------------------------------
+  docker-build:
+    name: Build & Push Docker Image
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    if: github.event_name == 'push'
+
+    permissions:
+      contents: read
+      packages: write  # Cần để push lên GHCR
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Buildx cho phép dùng cache và build multi-platform
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          # GITHUB_TOKEN được GitHub cấp tự động — không cần tạo thêm secret
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Tự động tạo tags cho Docker image dựa trên branch/commit
+      # Ví dụ push lên dev:  tag = "dev" + "dev-abc1234"
+      # Ví dụ push lên main: tag = "main" + "main-abc1234" + "latest"
+      - name: Extract Docker metadata (tags & labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=${{ github.ref_name }}-,format=short
+            type=raw,value=latest,enable=${{ github.ref_name == 'main' }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # GitHub Actions cache — layer caching giúp build lần sau nhanh hơn nhiều
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

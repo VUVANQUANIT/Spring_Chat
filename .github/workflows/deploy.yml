@@ -1,0 +1,176 @@
+# =============================================================================
+# CD — Continuous Deployment
+# Tự động deploy sau khi CI thành công
+#
+# dev  branch → deploy lên môi trường STAGING
+# main branch → deploy lên môi trường PRODUCTION (có approval gate)
+#
+# Yêu cầu setup trước khi dùng:
+#   Xem README.md phần "CI/CD Setup" để biết cách cấu hình GitHub Secrets
+# =============================================================================
+
+name: CD
+
+on:
+  # Trigger khi workflow CI chạy xong thành công
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main, dev]
+
+  # Cho phép chạy thủ công từ GitHub UI (tab Actions → Run workflow)
+  # Hữu ích khi cần redeploy mà không cần push code mới
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deploy to which environment?'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Deploy lên STAGING khi push lên nhánh dev
+  # ---------------------------------------------------------------------------
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+
+    # Điều kiện: CI phải thành công VÀ là nhánh dev
+    if: |
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'dev') ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.event.inputs.environment == 'staging')
+
+    # "environment" trong GitHub Actions cho phép:
+    # - Đặt Environment Secrets (khác với repo secrets)
+    # - Xem deployment history trên GitHub UI
+    environment:
+      name: staging
+      url: ${{ vars.STAGING_URL }}
+
+    steps:
+      - name: Deploy to Staging via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          port: ${{ secrets.STAGING_PORT || 22 }}
+          script: |
+            set -e
+
+            IMAGE="ghcr.io/${{ env.IMAGE_NAME }}:dev"
+
+            echo "==> Pulling latest image: $IMAGE"
+            docker pull $IMAGE
+
+            echo "==> Stopping old container (if exists)"
+            docker stop spring-chat-staging 2>/dev/null || true
+            docker rm spring-chat-staging 2>/dev/null || true
+
+            echo "==> Starting new container"
+            docker run -d \
+              --name spring-chat-staging \
+              --restart unless-stopped \
+              -p 8080:8080 \
+              --env-file /opt/spring-chat/staging.env \
+              --memory="512m" \
+              --cpus="0.5" \
+              $IMAGE
+
+            echo "==> Cleaning up old images"
+            docker image prune -f
+
+            echo "==> Health check"
+            sleep 10
+            curl -f http://localhost:8080/actuator/health || (docker logs spring-chat-staging && exit 1)
+
+            echo "✓ Staging deployment successful!"
+
+  # ---------------------------------------------------------------------------
+  # Deploy lên PRODUCTION khi push lên nhánh main
+  # ---------------------------------------------------------------------------
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+
+    if: |
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main') ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.event.inputs.environment == 'production')
+
+    # Production environment có thể cấu hình "Required reviewers" trên GitHub
+    # → Mỗi lần deploy prod phải có người approve trước
+    environment:
+      name: production
+      url: ${{ vars.PRODUCTION_URL }}
+
+    steps:
+      - name: Deploy to Production via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          port: ${{ secrets.PROD_PORT || 22 }}
+          script: |
+            set -e
+
+            IMAGE="ghcr.io/${{ env.IMAGE_NAME }}:latest"
+
+            echo "==> Pulling latest image: $IMAGE"
+            docker pull $IMAGE
+
+            echo "==> Blue-Green: Starting new container alongside old one"
+            docker stop spring-chat-prod-new 2>/dev/null || true
+            docker rm spring-chat-prod-new 2>/dev/null || true
+
+            docker run -d \
+              --name spring-chat-prod-new \
+              --restart unless-stopped \
+              -p 8081:8080 \
+              --env-file /opt/spring-chat/prod.env \
+              --memory="1g" \
+              --cpus="1.0" \
+              $IMAGE
+
+            echo "==> Health check on new container (port 8081)"
+            sleep 15
+            if curl -f http://localhost:8081/actuator/health; then
+              echo "==> New container healthy. Switching traffic..."
+
+              docker stop spring-chat-prod 2>/dev/null || true
+              docker rm spring-chat-prod 2>/dev/null || true
+
+              docker rename spring-chat-prod-new spring-chat-prod
+              docker update --publish-add 8080:8080 spring-chat-prod 2>/dev/null || \
+                docker run -d \
+                  --name spring-chat-prod \
+                  --restart unless-stopped \
+                  -p 8080:8080 \
+                  --env-file /opt/spring-chat/prod.env \
+                  --memory="1g" \
+                  --cpus="1.0" \
+                  $IMAGE
+
+              echo "==> Cleaning up"
+              docker image prune -f
+
+              echo "✓ Production deployment successful!"
+            else
+              echo "✗ Health check failed! Rolling back..."
+              docker stop spring-chat-prod-new 2>/dev/null || true
+              docker rm spring-chat-prod-new 2>/dev/null || true
+              exit 1
+            fi
