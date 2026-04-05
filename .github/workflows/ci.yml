@@ -71,7 +71,7 @@ jobs:
           DATABASE_USERNAME: postgres
           DATABASE_PASSWORD: postgres
           # Dùng create-drop: tự tạo schema khi start, xóa khi shutdown (chỉ trong test)
-          SPRING_JPA_HIBERNATE_DDL_AUTO: create-drop
+          JPA_DDL_AUTO: create-drop
           # JWT secret phải đủ dài (≥ 256 bit) — đây là giá trị giả cho CI
           JWT_SECRET: ci-test-secret-key-this-must-be-at-least-256-bits-long-for-hs256
           JWT_EXPIRATION: 86400000
