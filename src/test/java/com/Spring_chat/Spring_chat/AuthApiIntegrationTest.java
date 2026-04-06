@@ -38,10 +38,11 @@ class AuthApiIntegrationTest {
                                 {
                                   "username":"%s",
                                   "email":"%s@mail.test",
+                                  "fullName":"%s",
                                   "password":"%s",
                                   "confirmPassword":"%s"
                                 }
-                                """.formatted(username, username, password, password)))
+                                """.formatted(username, username, username, password, password)))
                 .andExpect(status().isCreated())
                 .andReturn();
         return result.getResponse().getContentAsString();
@@ -66,10 +67,11 @@ class AuthApiIntegrationTest {
                                 {
                                   "username":"%s",
                                   "email":"%s@mail.test",
+                                  "fullName":"%s",
                                   "password":"%s",
                                   "confirmPassword":"%s"
                                 }
-                                """.formatted(username, username, password, password)))
+                                """.formatted(username, username, username, password, password)))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("USERNAME_ALREADY_EXISTS"))
                 .andExpect(jsonPath("$.status").value(409));
@@ -142,10 +144,11 @@ class AuthApiIntegrationTest {
                                 {
                                   "username":"%s",
                                   "email":"%s_2@mail.test",
+                                  "fullName":"%s",
                                   "password":"%s",
                                   "confirmPassword":"%s"
                                 }
-                                """.formatted(username, username, password, password)))
+                                """.formatted(username, username, username, password, password)))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("USERNAME_ALREADY_EXISTS"))
                 .andExpect(jsonPath("$.status").value(409))
@@ -205,6 +208,7 @@ class AuthApiIntegrationTest {
                                 {
                                   "username":"ab",
                                   "email":"not-an-email",
+                                  "fullName":"",
                                   "password":"weak",
                                   "confirmPassword":"weak"
                                 }
