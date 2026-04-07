@@ -1,6 +1,6 @@
 package com.Spring_chat.Web_chat.dto.user;
 
-import com.Spring_chat.Web_chat.ENUM.FriendRelation;
+import com.Spring_chat.Web_chat.enums.FriendRelation;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;

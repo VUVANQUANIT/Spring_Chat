@@ -1,7 +1,7 @@
 package com.Spring_chat.Web_chat.service;
 
-import com.Spring_chat.Web_chat.ENUM.RoleName;
-import com.Spring_chat.Web_chat.ENUM.UserStatus;
+import com.Spring_chat.Web_chat.enums.RoleName;
+import com.Spring_chat.Web_chat.enums.UserStatus;
 import com.Spring_chat.Web_chat.dto.auth.LoginRequestDTO;
 import com.Spring_chat.Web_chat.dto.auth.LoginResponseDTO;
 import com.Spring_chat.Web_chat.dto.auth.RegisterRequestDTO;

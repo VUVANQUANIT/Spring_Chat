@@ -1,6 +1,6 @@
 package com.Spring_chat.Web_chat.repository;
 
-import com.Spring_chat.Web_chat.ENUM.UserStatus;
+import com.Spring_chat.Web_chat.enums.UserStatus;
 import com.Spring_chat.Web_chat.dto.user.UserSearchProjection;
 import com.Spring_chat.Web_chat.entity.User;
 import org.springframework.data.domain.Page;

@@ -1,6 +1,6 @@
 package com.Spring_chat.Web_chat.repository;
 
-import com.Spring_chat.Web_chat.ENUM.RoleName;
+import com.Spring_chat.Web_chat.enums.RoleName;
 import com.Spring_chat.Web_chat.entity.Role;
 import org.springframework.data.jpa.repository.JpaRepository;
 

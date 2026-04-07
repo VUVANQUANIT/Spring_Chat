@@ -10,6 +10,7 @@ import com.Spring_chat.Web_chat.exception.ErrorCode;
 import com.Spring_chat.Web_chat.mappers.UserMapper;
 import com.Spring_chat.Web_chat.repository.UserRepository;
 import com.Spring_chat.Web_chat.security.AuthenticatedUser;
+import com.Spring_chat.Web_chat.service.common.CurrentUserProvider;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;

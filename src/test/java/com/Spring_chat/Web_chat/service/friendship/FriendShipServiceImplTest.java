@@ -1,6 +1,6 @@
 package com.Spring_chat.Web_chat.service.friendship;
 
-import com.Spring_chat.Web_chat.ENUM.FriendshipStatus;
+import com.Spring_chat.Web_chat.enums.FriendshipStatus;
 import com.Spring_chat.Web_chat.dto.ApiResponse;
 import com.Spring_chat.Web_chat.dto.friendship.RejectFriendResponseDTO;
 import com.Spring_chat.Web_chat.entity.Friendship;

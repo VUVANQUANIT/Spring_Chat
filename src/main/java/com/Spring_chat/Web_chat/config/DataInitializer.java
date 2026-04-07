@@ -1,7 +1,7 @@
 package com.Spring_chat.Web_chat.config;
 
-import com.Spring_chat.Web_chat.ENUM.PermissionName;
-import com.Spring_chat.Web_chat.ENUM.RoleName;
+import com.Spring_chat.Web_chat.enums.PermissionName;
+import com.Spring_chat.Web_chat.enums.RoleName;
 import com.Spring_chat.Web_chat.entity.Permission;
 import com.Spring_chat.Web_chat.entity.Role;
 import com.Spring_chat.Web_chat.repository.PermissionRepository;
@@ -17,7 +17,7 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import static com.Spring_chat.Web_chat.ENUM.PermissionName.*;
+import static com.Spring_chat.Web_chat.enums.PermissionName.*;
 
 /**
  * Runs once on startup to seed Roles and Permissions if they do not yet exist.

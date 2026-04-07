@@ -1,6 +1,6 @@
 package com.Spring_chat.Web_chat.entity;
 
-import com.Spring_chat.Web_chat.ENUM.FriendshipStatus;
+import com.Spring_chat.Web_chat.enums.FriendshipStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;

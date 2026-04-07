@@ -1,6 +1,6 @@
 package com.Spring_chat.Web_chat.security;
 
-import com.Spring_chat.Web_chat.ENUM.UserStatus;
+import com.Spring_chat.Web_chat.enums.UserStatus;
 import com.Spring_chat.Web_chat.entity.Role;
 import com.Spring_chat.Web_chat.entity.User;
 import lombok.Getter;

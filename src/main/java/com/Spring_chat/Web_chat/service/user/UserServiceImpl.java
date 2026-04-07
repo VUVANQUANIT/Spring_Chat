@@ -1,6 +1,6 @@
 package com.Spring_chat.Web_chat.service.user;
 
-import com.Spring_chat.Web_chat.ENUM.FriendRelation;
+import com.Spring_chat.Web_chat.enums.FriendRelation;
 import com.Spring_chat.Web_chat.dto.ApiResponse;
 import com.Spring_chat.Web_chat.dto.PageResponse;
 import com.Spring_chat.Web_chat.dto.user.MyProfileUserDTO;

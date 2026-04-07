@@ -1,7 +1,7 @@
 package com.Spring_chat.Web_chat.controller.friendship;
 
-import com.Spring_chat.Web_chat.ENUM.FriendDirection;
-import com.Spring_chat.Web_chat.ENUM.FriendshipStatus;
+import com.Spring_chat.Web_chat.enums.FriendDirection;
+import com.Spring_chat.Web_chat.enums.FriendshipStatus;
 import com.Spring_chat.Web_chat.dto.ApiResponse;
 import com.Spring_chat.Web_chat.dto.PageResponse;
 import com.Spring_chat.Web_chat.dto.friendship.*;
@@ -20,7 +20,7 @@ public class FriendShipController {
     @PostMapping("/requests")
     public ResponseEntity<ApiResponse<FriendRequestResponseDTO>> sendRequestFriendShip(
             @Valid @RequestBody FriendRequestCreateRequestDTO requestCreateRequestDTO) {
-        return ResponseEntity.ok(friendShipService.sendRequestFriend(requestCreateRequestDTO));
+        return ResponseEntity.status(201).body(friendShipService.sendRequestFriend(requestCreateRequestDTO));
     }
 
     /**
@@ -58,7 +58,8 @@ public class FriendShipController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<ApiResponse<String>> deleteFriendship(@PathVariable("id") Long id) {
-        return ResponseEntity.ok(friendShipService.deleteFriendship(id));
+    public ResponseEntity<Void> deleteFriendship(@PathVariable("id") Long id) {
+        friendShipService.deleteFriendship(id);
+        return ResponseEntity.noContent().build();
     }
 }

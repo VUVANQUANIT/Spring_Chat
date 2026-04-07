@@ -1,4 +1,4 @@
-package com.Spring_chat.Web_chat.ENUM;
+package com.Spring_chat.Web_chat.enums;
 
 /**
  * Trạng thái quan hệ giữa currentUser và một user khác trong kết quả search.
