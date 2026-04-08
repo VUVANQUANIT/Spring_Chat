@@ -26,9 +26,9 @@ import java.time.Instant;
 @Builder
 @Entity
 @Table(
-        name = "ConversationParticipant",
+        name = "conversation_participants",
         uniqueConstraints = {
-                @UniqueConstraint(name = "unique_participant", columnNames = {"conversationId", "userId"})
+                @UniqueConstraint(name = "unique_participant", columnNames = {"conversation_id", "user_id"})
         }
 )
 public class ConversationParticipant {
@@ -39,21 +39,21 @@ public class ConversationParticipant {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "\"conversationId\"", nullable = false)
+    @JoinColumn(name = "conversation_id", nullable = false)
     private Conversation conversation;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "\"userId\"", nullable = false)
+    @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
     @CreationTimestamp
-    @Column(name = "\"joinedAt\"", nullable = false, updatable = false)
+    @Column(name = "joined_at", nullable = false, updatable = false)
     private Instant joinedAt;
 
-    @Column(name = "\"leftAt\"")
+    @Column(name = "left_at")
     private Instant leftAt;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "\"lastReadMessageId\"")
+    @JoinColumn(name = "last_read_message_id")
     private Message lastReadMessage;
 }

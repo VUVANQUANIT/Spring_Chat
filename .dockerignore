@@ -1,0 +1,31 @@
+# Git
+.git/
+.gitignore
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Maven build output (multi-stage build sẽ compile lại trong container)
+target/
+
+# Local secrets — KHÔNG bao giờ đưa vào Docker image
+.env
+*.env
+.env.*
+
+# Documentation
+docs/
+*.md
+HELP.md
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test reports
+**/surefire-reports/
+
+# GitHub Actions
+.github/

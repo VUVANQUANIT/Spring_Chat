@@ -31,12 +31,12 @@ import java.time.Instant;
 @Builder
 @Entity
 @Table(
-        name = "Friendship",
+        name = "friendships",
         uniqueConstraints = {
-                @UniqueConstraint(name = "unique_friendship", columnNames = {"requesterId", "addresseeId"})
+                @UniqueConstraint(name = "unique_friendship", columnNames = {"requester_id", "addressee_id"})
         }
 )
-@Check(constraints = "\"status\" IN ('PENDING', 'ACCEPTED', 'REJECTED', 'BLOCKED') AND \"requesterId\" <> \"addresseeId\"")
+@Check(constraints = "status IN ('PENDING', 'ACCEPTED', 'REJECTED', 'BLOCKED') AND requester_id <> addressee_id")
 public class Friendship {
 
     @Id
@@ -45,23 +45,23 @@ public class Friendship {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "\"requesterId\"", nullable = false)
+    @JoinColumn(name = "requester_id", nullable = false)
     private User requester;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "\"addresseeId\"", nullable = false)
+    @JoinColumn(name = "addressee_id", nullable = false)
     private User addressee;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "\"status\"", nullable = false, length = 20)
+    @Column(name = "status", nullable = false, length = 20)
     @Builder.Default
     private FriendshipStatus status = FriendshipStatus.PENDING;
 
     @CreationTimestamp
-    @Column(name = "\"createdAt\"", nullable = false, updatable = false)
+    @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
     @UpdateTimestamp
-    @Column(name = "\"updatedAt\"", nullable = false)
+    @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 }

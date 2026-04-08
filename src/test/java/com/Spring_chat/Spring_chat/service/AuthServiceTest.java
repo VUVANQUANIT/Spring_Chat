@@ -70,7 +70,7 @@ class AuthServiceTest {
 
         @BeforeEach
         void setUp() {
-            dto = new RegisterRequestDTO("alice", "alice@mail.test", PASSWORD, PASSWORD);
+            dto = new RegisterRequestDTO("alice", "alice@mail.test", "Alice Full Name", PASSWORD, PASSWORD);
         }
 
         @Test

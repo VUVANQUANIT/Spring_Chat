@@ -1,226 +1,114 @@
-# Spring Chat - Entity Model
+# 🚀 Spring Chat - Enterprise Real-time Messaging Platform
 
-## Tổng quan
+[![Java Version](https://img.shields.io/badge/Java-21-orange?style=for-the-badge&logo=openjdk)](https://openjdk.org/projects/jdk/21/)
+[![Spring Boot](https://img.shields.io/badge/Spring_Boot-3.4+-brightgreen?style=for-the-badge&logo=springboot)](https://spring.io/projects/spring-boot)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-blue?style=for-the-badge&logo=postgresql)](https://www.postgresql.org/)
+[![Docker](https://img.shields.io/badge/Docker-Enabled-blue?style=for-the-badge&logo=docker)](https://www.docker.com/)
+[![License](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](LICENSE)
 
-Bộ entity này được tạo từ schema SQL bạn cung cấp, gồm 6 bảng chính:
+---
 
-- `User`
-- `Friendship`
-- `Conversation`
-- `ConversationParticipant`
-- `Message`
-- `MessageStatus`
+## 🌏 English Version
 
-Các entity nằm trong package:
+### 📖 Introduction
+**Spring Chat** is a high-performance, scalable real-time messaging engine built with **Java 21** and **Spring Boot 3**. Designed with a focus on security, concurrency, and modern architectural patterns, it leverages **Project Loom (Virtual Threads)** for massive scalability and a robust **RBAC + Permission** system for enterprise-grade access control.
 
-- `src/main/java/com/Spring_chat/Spring_chat/entity`
-- `src/main/java/com/Spring_chat/Spring_chat/ENUM`
+### ✨ Key Features
+- ⚡ **Real-time Performance**: Optimized for thousands of concurrent connections using Java 21 Virtual Threads.
+- 🔐 **Advanced Security**: Stateless Authentication with JWT, Refresh Tokens, and a granular RBAC (Role-Based Access Control) + Permission system.
+- 💬 **Rich Messaging**: Supports Private & Group chats, Message Status (Sent/Delivered/Seen), and Reply/Thread logic.
+- 🔍 **Smart Search**: Integrated PostgreSQL Trigram indexing for lightning-fast user and message search.
+- 🏗️ **Solid Architecture**: Clean code, Domain-driven Entity mapping, and automated Database Migrations.
+- ⛓️ **CI/CD Ready**: Fully automated pipelines with GitHub Actions, Dockerized for seamless deployment.
 
-## Mô tả từng entity
+### 🛠️ Tech Stack
+- **Language**: Java 21 (LTS)
+- **Framework**: Spring Boot 3.4+, Spring Security, Spring Data JPA
+- **Database**: PostgreSQL 15+
+- **Messaging/Queue**: RabbitMQ (for Async Mail/Tasks)
+- **Documentation**: Swagger/OpenAPI (detailed specification)
+- **DevOps**: Docker, Docker Compose, GitHub Actions (CI/CD)
 
-### 1) `User`
+---
 
-Đại diện tài khoản người dùng trong hệ thống chat.
+## 🇻🇳 Phiên bản Tiếng Việt
 
-Thuộc tính chính:
+### 📖 Giới thiệu
+**Spring Chat** là một nền tảng backend cho hệ thống nhắn tin thời gian thực hiệu suất cao, được xây dựng trên nền tảng **Java 21** và **Spring Boot 3**. Dự án tập trung vào khả năng mở rộng, bảo mật tối đa và áp dụng các pattern kiến trúc hiện đại, sử dụng **Project Loom (Virtual Threads)** để xử lý hàng ngàn kết nối đồng thời và hệ thống phân quyền **RBAC + Permission** chi tiết.
 
-- `id`: khóa chính.
-- `username`, `email`: duy nhất (`UNIQUE`).
-- `passwordHash`: mật khẩu đã hash.
-- `fullName`, `avatarUrl`: thông tin hồ sơ.
-- `status`: trạng thái tài khoản (`ACTIVE`, `INACTIVE`, `BANNED`).
-- `lastSeen`: thời điểm online gần nhất.
-- `createdAt`, `updatedAt`: thời điểm tạo/cập nhật.
+### ✨ Tính năng nổi bật
+- ⚡ **Hiệu suất vượt trội**: Tối ưu hóa cho hàng ngàn kết nối đồng thời nhờ Virtual Threads của Java 21.
+- 🔐 **Bảo mật chuyên sâu**: Xác thực Stateless qua JWT, hỗ trợ Refresh Token, phân quyền đa lớp (Role & Permission).
+- 💬 **Hệ thống tin nhắn**: Hỗ trợ chat cá nhân/nhóm, trạng thái tin nhắn (Đã gửi/Đã nhận/Đã xem) và trả lời theo luồng (Reply).
+- 🔍 **Tìm kiếm thông minh**: Sử dụng PostgreSQL Trigram Index giúp tìm kiếm người dùng và tin nhắn cực nhanh.
+- 🏗️ **Kiến trúc chuẩn mực**: Code sạch, mapping Entity chuẩn Domain-driven, quản lý DB Migration tự động.
+- ⛓️ **Sẵn sàng triển khai**: Tích hợp sẵn CI/CD GitHub Actions, đóng gói Docker hoàn chỉnh.
 
-### 2) `Friendship`
+### 🛠️ Công nghệ sử dụng
+- **Ngôn ngữ**: Java 21 (LTS)
+- **Framework**: Spring Boot 3.4+, Spring Security, Spring Data JPA
+- **Cơ sở dữ liệu**: PostgreSQL 15+
+- **Messaging**: RabbitMQ (xử lý Mail/Task bất đồng bộ)
+- **Tài liệu API**: Swagger/OpenAPI
+- **DevOps**: Docker, Docker Compose, GitHub Actions
 
-Đại diện mối quan hệ kết bạn giữa 2 user.
+---
 
-Thuộc tính chính:
+## 🚀 Getting Started / Hướng dẫn bắt đầu
 
-- `requester`: user gửi lời mời.
-- `addressee`: user nhận lời mời.
-- `status`: trạng thái kết bạn (`PENDING`, `ACCEPTED`, `REJECTED`, `BLOCKED`).
-- `createdAt`, `updatedAt`.
+### 1. Prerequisites / Tiền đề
+- JDK 21+
+- Docker & Docker Compose
+- Maven 3.9+
 
-Ràng buộc:
+### 2. Configuration / Cấu hình
+Create a `.env` file in the root directory (Tạo file `.env` tại thư mục gốc):
+```env
+# Database
+DATABASE_URL=jdbc:postgresql://localhost:5432/spring_chat
+DATABASE_USERNAME=postgres
+DATABASE_PASSWORD=your_password
 
-- Duy nhất cặp `(requesterId, addresseeId)`.
-- Không cho phép tự kết bạn (`requesterId != addresseeId`).
+# JWT
+JWT_SECRET=your_super_secret_key_at_least_256_bits
+JWT_EXPIRATION=86400000
+JWT_REFRESH_EXPIRATION=604800000
 
-### 3) `Conversation`
+# Server
+SERVER_PORT=8080
+JPA_DDL_AUTO=update
+```
 
-Đại diện một cuộc hội thoại.
+### 3. Running with Docker / Chạy bằng Docker
+```bash
+docker-compose up -d
+```
 
-Thuộc tính chính:
+### 4. Running for Development / Chạy môi trường Dev
+```bash
+./mvnw clean install
+./mvnw spring-boot:run
+```
 
-- `type`: loại hội thoại (`PRIVATE`, `GROUP`).
-- `createdAt`.
+---
 
-### 4) `ConversationParticipant`
+## 🏗️ System Architecture / Kiến trúc hệ thống
 
-Đại diện thành viên tham gia hội thoại.
+### 🔐 Security Flow (RBAC + Permission)
+Hệ thống sử dụng mô hình **stateless** hoàn toàn:
+1.  **Authentication**: User đăng nhập nhận cặp Access Token & Refresh Token.
+2.  **Authorization**: JWT chứa danh sách `roles` và `permissions`.
+3.  **Validation**: `JwtAuthenticationFilter` giải mã token và nạp quyền hạn vào `SecurityContext` mà không cần query lại database mỗi request.
 
-Thuộc tính chính:
+### 🗄️ Database Architecture
+Dự án bao gồm 6 thực thể chính (Entities) được tối ưu hóa cho hiệu suất cao và tính toàn vẹn dữ liệu. Để xem mô tả chi tiết từng bảng, sơ đồ ERD và các ràng buộc hệ thống, vui lòng truy cập:
 
-- `conversation`: hội thoại tham gia.
-- `user`: người tham gia.
-- `joinedAt`: thời điểm tham gia.
-- `leftAt`: thời điểm rời nhóm (nếu có).
-- `lastReadMessage`: message gần nhất user đã đọc.
+👉 [**Tài liệu Database & Entity Mapping chi tiết**](./docs/DATABASE.md)
 
-Ràng buộc:
+---
 
-- Duy nhất cặp `(conversationId, userId)`.
+## 📝 Contribution & License
+- **License**: MIT
+- **Author**: [VUVANQUANIT](https://github.com/VUVANQUANIT)
 
-### 5) `Message`
-
-Đại diện tin nhắn trong hội thoại.
-
-Thuộc tính chính:
-
-- `conversation`: hội thoại chứa tin nhắn.
-- `sender`: người gửi.
-- `content`: nội dung.
-- `type`: loại tin nhắn (`TEXT`, `IMAGE`, `FILE`, `VOICE`, `SYSTEM`).
-- `replyTo`: liên kết message được reply.
-- `isDeleted`: đánh dấu xóa mềm.
-- `createdAt`.
-
-### 6) `MessageStatus`
-
-Đại diện trạng thái gửi/nhận/đã xem của 1 message theo từng user.
-
-Thuộc tính chính:
-
-- `message`: tin nhắn.
-- `user`: người nhận trạng thái.
-- `status`: (`SENT`, `DELIVERED`, `SEEN`).
-- `updatedAt`.
-
-Ràng buộc:
-
-- Duy nhất cặp `(messageId, userId)`.
-
-## Quan hệ chính
-
-- `Friendship.requester` -> `User` (`ManyToOne`)
-- `Friendship.addressee` -> `User` (`ManyToOne`)
-- `ConversationParticipant.conversation` -> `Conversation` (`ManyToOne`)
-- `ConversationParticipant.user` -> `User` (`ManyToOne`)
-- `ConversationParticipant.lastReadMessage` -> `Message` (`ManyToOne`)
-- `Message.conversation` -> `Conversation` (`ManyToOne`)
-- `Message.sender` -> `User` (`ManyToOne`)
-- `Message.replyTo` -> `Message` (`ManyToOne`, self reference)
-- `MessageStatus.message` -> `Message` (`ManyToOne`)
-- `MessageStatus.user` -> `User` (`ManyToOne`)
-
-## Ghi chú triển khai
-
-- Các cột thời gian dùng `Instant` để map với `TIMESTAMP WITH TIME ZONE`.
-- Đã dùng `@CreationTimestamp` và `@UpdateTimestamp` để tự cập nhật thời gian ở tầng ORM.
-- Trạng thái (`status`, `type`) được map bằng `enum` và lưu dạng chuỗi (`EnumType.STRING`).
-
-## Hệ thống phân quyền (RBAC + Permission)
-
-### Tổng quan
-
-Hệ thống sử dụng mô hình RBAC (Role-Based Access Control) kết hợp permission chi tiết, với JWT stateless:
-
-- `Role` đại diện nhóm quyền (User, Moderator, Admin).
-- `Permission` mô tả hành vi cụ thể (đọc/ghi/xóa user, message, conversation, v.v.).
-- Mỗi `User` có tập `Role`; mỗi `Role` ánh xạ tới nhiều `Permission` qua bảng nối `role_permission`.
-- Khi login, hệ thống build tập `GrantedAuthority` từ cả `Role` và `Permission`, sau đó embed vào JWT để không phải query DB mỗi request.
-
-### Entity và enum liên quan
-
-- `Role` (`src/main/java/com/Spring_chat/Spring_chat/entity/Role.java`)
-  - Trường chính:
-    - `name: RoleName` (enum, lưu dạng chuỗi).
-    - `description: String` (mô tả role).
-    - `permissions: Set<Permission>` (many-to-many).
-
-- `Permission` (`src/main/java/com/Spring_chat/Spring_chat/entity/Permission.java`)
-  - Trường chính:
-    - `name: PermissionName` (enum, lưu dạng chuỗi).
-    - `description: String` (mô tả permission).
-
-- `RoleName` (`src/main/java/com/Spring_chat/Spring_chat/ENUM/RoleName.java`)
-  - Các giá trị chính (authority dạng `"ROLE_*"`):
-    - `ROLE_USER`
-    - `ROLE_MODERATOR`
-    - `ROLE_ADMIN`
-
-- `PermissionName` (`src/main/java/com/Spring_chat/Spring_chat/ENUM/PermissionName.java`)
-  - Nhóm **quản lý user**:
-    - `USER_READ`, `USER_WRITE`, `USER_DELETE`, `USER_BAN`
-  - Nhóm **tin nhắn**:
-    - `MESSAGE_READ`, `MESSAGE_WRITE`, `MESSAGE_DELETE`, `MESSAGE_DELETE_ANY`
-  - Nhóm **hội thoại**:
-    - `CONVERSATION_READ`, `CONVERSATION_WRITE`, `CONVERSATION_DELETE`
-  - Nhóm **quan hệ bạn bè**:
-    - `FRIENDSHIP_READ`, `FRIENDSHIP_WRITE`
-  - Nhóm **admin / hệ thống**:
-    - `ADMIN_PANEL_ACCESS`, `ROLE_MANAGE`
-
-### Cách Spring Security sử dụng Role / Permission
-
-- Adapter `UserDetailsImpl` (`src/main/java/com/Spring_chat/Spring_chat/security/UserDetailsImpl.java`):
-  - Được dùng lúc authenticate (login) để chuyển entity `User` sang `UserDetails`.
-  - Hàm `buildAuthorities` tạo ra tập `GrantedAuthority` từ:
-    - Tên role (ví dụ: `ROLE_ADMIN`, `ROLE_USER`).
-    - Các permission gắn với role (ví dụ: `MESSAGE_DELETE_ANY`, `USER_BAN`).
-
-- Cấu hình `SecurityConfig` (`src/main/java/com/Spring_chat/Spring_chat/security/SecurityConfig.java`):
-  - Dùng `@EnableWebSecurity` và `@EnableMethodSecurity(prePostEnabled = true)`.
-  - Quy tắc URL-level:
-    - `/api/auth/**` và `/error` → `permitAll()`.
-    - `/api/admin/**` → `hasRole("ADMIN")` (tương ứng authority `ROLE_ADMIN`).
-    - `/api/moderation/**` → `hasAnyRole("ADMIN", "MODERATOR")`.
-    - Các request khác → `authenticated()`; phân quyền chi tiết thực hiện bằng annotation ở method (ví dụ `@PreAuthorize`).
-
-### JWT và principal trong request
-
-- `JwtService` (`src/main/java/com/Spring_chat/Spring_chat/security/JwtService.java`):
-  - Sinh access token với các claim:
-    - `sub` (subject): username.
-    - `uid`: user id (Long).
-    - `roles`: danh sách authority (role/permission) dạng `List<String>`.
-  - Thời gian sống được cấu hình qua `JwtConfig`.
-
-- `JwtAuthenticationFilter` (`src/main/java/com/Spring_chat/Spring_chat/security/JwtAuthenticationFilter.java`):
-  - Chạy cho mỗi request (stateless).
-  - Đọc header `Authorization: Bearer <token>`:
-    - Validate token và extract `Claims` qua `JwtService`.
-    - Lấy `uid`, `sub`, và danh sách `roles` (authority string).
-    - Convert thành `Collection<GrantedAuthority>` và gán vào `SecurityContext` mà **không cần truy vấn DB**.
-
-- `AuthenticatedUser` (`src/main/java/com/Spring_chat/Spring_chat/security/AuthenticatedUser.java`):
-  - Principal nhẹ được tạo từ JWT claims.
-  - Có sẵn:
-    - `id`: user id.
-    - `username`.
-    - `authorities`: danh sách role/permission dưới dạng `GrantedAuthority`.
-  - Hỗ trợ helper:
-    - `hasRole(String role)`
-    - `hasPermission(String permission)`
-  - Có thể inject vào controller qua `@AuthenticationPrincipal AuthenticatedUser principal` để check quyền ở tầng API/业务.
-
-### Cách mở rộng phân quyền
-
-- **Thêm permission mới**:
-  - Thêm giá trị mới vào `PermissionName`.
-  - Tạo record tương ứng trong bảng `permission` (seed hoặc migration).
-  - Gán vào các role phù hợp qua bảng `role_permission`.
-  - Dùng trong code với `@PreAuthorize("hasAuthority('PERMISSION_NAME_MOI')")` hoặc `principal.hasPermission("PERMISSION_NAME_MOI")`.
-
-- **Thêm role mới**:
-  - Thêm vào enum `RoleName` (ví dụ: `ROLE_SUPPORT`).
-  - Tạo record trong bảng `role`.
-  - Mapping các permission phù hợp cho role mới.
-  - Cập nhật rule trong `SecurityConfig` (nếu cần phân biệt theo URL prefix) hoặc dùng `@PreAuthorize("hasRole('ROLE_SUPPORT')")` / `hasAnyRole(...)`.
-
-- **Ưu điểm**:
-  - Stateless, dễ scale: không lưu session server-side, chỉ dựa vào JWT.
-  - Tách bạch rõ `Role` (nhóm quyền) và `Permission` (hành vi cụ thể).
-  - Dễ thay đổi mapping role ↔ permission trong DB mà không phải sửa code.
+*Cảm ơn bạn đã quan tâm đến Spring Chat! Nếu thấy hữu ích, hãy tặng chúng tôi một ⭐ nhé!*

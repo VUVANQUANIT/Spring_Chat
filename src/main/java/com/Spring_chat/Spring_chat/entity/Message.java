@@ -28,8 +28,8 @@ import java.time.Instant;
 @AllArgsConstructor
 @Builder
 @Entity
-@Table(name = "Message")
-@Check(constraints = "\"type\" IN ('TEXT', 'IMAGE', 'FILE', 'VOICE', 'SYSTEM')")
+@Table(name = "messages")
+@Check(constraints = "type IN ('TEXT', 'IMAGE', 'FILE', 'VOICE', 'SYSTEM')")
 public class Message {
 
     @Id
@@ -38,30 +38,30 @@ public class Message {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "\"conversationId\"", nullable = false)
+    @JoinColumn(name = "conversation_id", nullable = false)
     private Conversation conversation;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "\"senderId\"", nullable = false)
+    @JoinColumn(name = "sender_id", nullable = false)
     private User sender;
 
-    @Column(name = "\"content\"", nullable = false)
+    @Column(name = "content", nullable = false)
     private String content;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "\"type\"", nullable = false, length = 20)
+    @Column(name = "type", nullable = false, length = 20)
     @Builder.Default
     private MessageType type = MessageType.TEXT;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "\"replyToId\"")
+    @JoinColumn(name = "reply_to_id")
     private Message replyTo;
 
-    @Column(name = "\"isDeleted\"", nullable = false)
+    @Column(name = "is_deleted", nullable = false)
     @Builder.Default
     private Boolean isDeleted = false;
 
     @CreationTimestamp
-    @Column(name = "\"createdAt\"", nullable = false, updatable = false)
+    @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 }

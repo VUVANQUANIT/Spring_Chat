@@ -50,7 +50,7 @@ public class AuthService {
                 .username(dto.getUsername())
                 .email(dto.getEmail())
                 .passwordHash(passwordEncoder.encode(dto.getPassword()))
-                .fullName(dto.getUsername())
+                .fullName(dto.getFullName())
                 .status(UserStatus.ACTIVE)
                 .roles(new HashSet<>(Set.of(defaultRole)))
                 .build();
