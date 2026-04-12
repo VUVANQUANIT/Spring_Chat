@@ -12,6 +12,7 @@ import com.Spring_chat.Web_chat.exception.ErrorCode;
 import com.Spring_chat.Web_chat.mappers.ConversationMapper;
 import com.Spring_chat.Web_chat.repository.ConversationParticipantRepository;
 import com.Spring_chat.Web_chat.repository.ConversationRepository;
+import com.Spring_chat.Web_chat.repository.MessageRepository;
 import com.Spring_chat.Web_chat.repository.UserRepository;
 import com.Spring_chat.Web_chat.security.AuthenticatedUser;
 import com.Spring_chat.Web_chat.service.common.CurrentUserProvider;
@@ -45,6 +46,7 @@ class ConversationServiceImplTest {
     @Mock private UserRepository userRepository;
     @Mock private ConversationParticipantRepository conversationParticipantRepository;
     @Mock private ConversationMapper conversationMapper;
+    @Mock private MessageRepository messageRepository;
 
     private CurrentUserProvider currentUserProvider;
     private ConversationServiceImpl conversationService;
@@ -57,7 +59,8 @@ class ConversationServiceImplTest {
                 userRepository,
                 currentUserProvider,
                 conversationParticipantRepository,
-                conversationMapper
+                conversationMapper,
+                messageRepository
         );
     }
 
