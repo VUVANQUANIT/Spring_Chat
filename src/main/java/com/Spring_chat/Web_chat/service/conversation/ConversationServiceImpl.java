@@ -165,6 +165,24 @@ public class ConversationServiceImpl implements ConversationService {
         return ApiResponse.ok("OK", result);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public ApiResponse<ConversationDetailDTO> getConversationDetail(Long conversationId) {
+        User currentUser = currentUserProvider.findCurrentUserOrThrow();
+        Conversation conversation = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND, "Conversation not found"));
+
+        if (!conversationParticipantRepository.existsByConversation_IdAndUser_Id(conversationId, currentUser.getId())) {
+            throw new AppException(ErrorCode.FORBIDDEN, "You are not a participant of this conversation");
+        }
+
+        List<ConversationParticipant> participants =
+                conversationParticipantRepository.findAllByConversation_IdOrderByJoinedAtAsc(conversationId);
+
+        ConversationDetailDTO detailDTO = conversationMapper.toConversationDetailDTO(conversation, participants);
+        return ApiResponse.ok("OK", detailDTO);
+    }
+
     private ConversationSummaryDTO toSummaryDTO(ConversationRowProjection row) {
         ConversationSummaryDTO dto = new ConversationSummaryDTO();
         dto.setId(row.getId());

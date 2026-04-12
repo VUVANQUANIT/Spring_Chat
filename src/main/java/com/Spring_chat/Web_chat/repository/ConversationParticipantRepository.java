@@ -11,6 +11,8 @@ import java.util.List;
 public interface ConversationParticipantRepository extends JpaRepository<ConversationParticipant, Long> {
     List<ConversationParticipant> findByConversation_Id(Long conversationId);
     List<ConversationParticipant> findByUser_Id(Long userId);
+    List<ConversationParticipant> findAllByConversation_IdOrderByJoinedAtAsc(Long conversationId);
+    boolean existsByConversation_IdAndUser_Id(Long conversationId, Long userId);
 
     /**
      * Lấy danh sách conversations của user theo inbox order (cursor-based pagination).

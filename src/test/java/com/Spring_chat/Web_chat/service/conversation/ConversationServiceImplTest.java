@@ -1,6 +1,7 @@
 package com.Spring_chat.Web_chat.service.conversation;
 
 import com.Spring_chat.Web_chat.dto.ApiResponse;
+import com.Spring_chat.Web_chat.dto.conversations.ConversationDetailDTO;
 import com.Spring_chat.Web_chat.dto.conversations.CreateConversationsDTO;
 import com.Spring_chat.Web_chat.dto.conversations.CreateConversationsResponseDTO;
 import com.Spring_chat.Web_chat.entity.Conversation;
@@ -242,6 +243,76 @@ class ConversationServiceImplTest {
             then(conversationParticipantRepository).should().saveAll(participantsCaptor.capture());
             List<ConversationParticipant> participants = participantsCaptor.getValue();
             assertThat(participants).hasSize(3);
+        }
+    }
+
+    @Nested
+    @DisplayName("getConversationDetail")
+    class GetConversationDetail {
+
+        @Test
+        @DisplayName("participant hợp lệ -> trả chi tiết conversation")
+        void participantShouldReceiveConversationDetail() {
+            setCurrentUser(1L, "alice");
+            User alice = User.builder().id(1L).username("alice").build();
+            User owner = User.builder().id(1L).username("alice").build();
+            Conversation conversation = Conversation.builder()
+                    .id(55L)
+                    .type(ConversationType.GROUP)
+                    .title("Dev Team")
+                    .owner(owner)
+                    .build();
+            List<ConversationParticipant> participants = List.of(
+                    ConversationParticipant.builder().conversation(conversation).user(alice).build()
+            );
+            ConversationDetailDTO detailDTO = new ConversationDetailDTO();
+            detailDTO.setId(55L);
+
+            given(userRepository.findById(1L)).willReturn(Optional.of(alice));
+            given(conversationRepository.findById(55L)).willReturn(Optional.of(conversation));
+            given(conversationParticipantRepository.existsByConversation_IdAndUser_Id(55L, 1L)).willReturn(true);
+            given(conversationParticipantRepository.findAllByConversation_IdOrderByJoinedAtAsc(55L)).willReturn(participants);
+            given(conversationMapper.toConversationDetailDTO(conversation, participants)).willReturn(detailDTO);
+
+            ApiResponse<ConversationDetailDTO> response = conversationService.getConversationDetail(55L);
+
+            assertThat(response.isSuccess()).isTrue();
+            assertThat(response.getData().getId()).isEqualTo(55L);
+        }
+
+        @Test
+        @DisplayName("conversation không tồn tại -> RESOURCE_NOT_FOUND")
+        void missingConversationShouldThrow() {
+            setCurrentUser(1L, "alice");
+            User alice = User.builder().id(1L).username("alice").build();
+
+            given(userRepository.findById(1L)).willReturn(Optional.of(alice));
+            given(conversationRepository.findById(99L)).willReturn(Optional.empty());
+
+            assertThatThrownBy(() -> conversationService.getConversationDetail(99L))
+                    .isInstanceOf(AppException.class)
+                    .extracting(e -> ((AppException) e).getErrorCode())
+                    .isEqualTo(ErrorCode.RESOURCE_NOT_FOUND);
+        }
+
+        @Test
+        @DisplayName("không phải participant -> FORBIDDEN")
+        void nonParticipantShouldThrowForbidden() {
+            setCurrentUser(1L, "alice");
+            User alice = User.builder().id(1L).username("alice").build();
+            Conversation conversation = Conversation.builder()
+                    .id(55L)
+                    .type(ConversationType.GROUP)
+                    .build();
+
+            given(userRepository.findById(1L)).willReturn(Optional.of(alice));
+            given(conversationRepository.findById(55L)).willReturn(Optional.of(conversation));
+            given(conversationParticipantRepository.existsByConversation_IdAndUser_Id(55L, 1L)).willReturn(false);
+
+            assertThatThrownBy(() -> conversationService.getConversationDetail(55L))
+                    .isInstanceOf(AppException.class)
+                    .extracting(e -> ((AppException) e).getErrorCode())
+                    .isEqualTo(ErrorCode.FORBIDDEN);
         }
     }
 }

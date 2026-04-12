@@ -1,6 +1,7 @@
 package com.Spring_chat.Web_chat.controller.conversation;
 
 import com.Spring_chat.Web_chat.dto.ApiResponse;
+import com.Spring_chat.Web_chat.dto.conversations.ConversationDetailDTO;
 import com.Spring_chat.Web_chat.dto.conversations.ConversationListDTO;
 import com.Spring_chat.Web_chat.dto.conversations.CreateConversationsDTO;
 import com.Spring_chat.Web_chat.dto.conversations.CreateConversationsResponseDTO;
@@ -40,5 +41,10 @@ public class ConversationController {
         return ResponseEntity.ok(
                 conversationService.getUserConversation(PageRequest.of(0, clampedLimit), cursor)
         );
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<ApiResponse<ConversationDetailDTO>> getConversationDetail(@PathVariable("id") Long id) {
+        return ResponseEntity.ok(conversationService.getConversationDetail(id));
     }
 }
