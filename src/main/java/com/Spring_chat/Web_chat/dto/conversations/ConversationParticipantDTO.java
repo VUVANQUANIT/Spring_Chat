@@ -8,6 +8,9 @@ import java.time.Instant;
 public class ConversationParticipantDTO {
     private Long userId;
     private String username;
+    private String fullName;
     private String avatarUrl;
     private Instant joinedAt;
+    private Instant leftAt;
+    private Boolean isOwner;
 }

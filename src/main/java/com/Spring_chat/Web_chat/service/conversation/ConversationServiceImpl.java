@@ -1,29 +1,29 @@
 package com.Spring_chat.Web_chat.service.conversation;
 
 import com.Spring_chat.Web_chat.dto.ApiResponse;
-import com.Spring_chat.Web_chat.dto.conversations.CreateConversationsDTO;
-import com.Spring_chat.Web_chat.dto.conversations.CreateConversationsResponseDTO;
+import com.Spring_chat.Web_chat.dto.conversations.*;
 import com.Spring_chat.Web_chat.entity.Conversation;
 import com.Spring_chat.Web_chat.entity.ConversationParticipant;
 import com.Spring_chat.Web_chat.entity.User;
 import com.Spring_chat.Web_chat.enums.ConversationType;
+import com.Spring_chat.Web_chat.enums.MessageType;
 import com.Spring_chat.Web_chat.exception.AppException;
 import com.Spring_chat.Web_chat.exception.ErrorCode;
 import com.Spring_chat.Web_chat.mappers.ConversationMapper;
 import com.Spring_chat.Web_chat.repository.ConversationParticipantRepository;
 import com.Spring_chat.Web_chat.repository.ConversationRepository;
+import com.Spring_chat.Web_chat.repository.MessageRepository;
 import com.Spring_chat.Web_chat.repository.UserRepository;
 import com.Spring_chat.Web_chat.service.common.CurrentUserProvider;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Set;
+import java.time.Instant;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -34,6 +34,7 @@ public class ConversationServiceImpl implements ConversationService {
     private final CurrentUserProvider currentUserProvider;
     private final ConversationParticipantRepository conversationParticipantRepository;
     private final ConversationMapper conversationMapper;
+    private final MessageRepository messageRepository;
 
     @Override
     @Transactional
@@ -130,5 +131,90 @@ public class ConversationServiceImpl implements ConversationService {
         }
 
         throw new AppException(ErrorCode.VALIDATION_FAILED, "Loại hội thoại không hợp lệ");
+    }
+
+    @Override
+    public ApiResponse<ConversationListDTO> getUserConversation(Pageable pageable, String cursor) {
+        User currentUser = currentUserProvider.findCurrentUserOrThrow();
+
+        int limit = Math.min(pageable.getPageSize(), 50);
+
+        List<ConversationRowProjection> rows = conversationParticipantRepository
+                .findUserConversations(currentUser.getId(), cursor, limit + 1);
+
+        boolean hasMore = rows.size() > limit;
+        List<ConversationRowProjection> page = hasMore ? rows.subList(0, limit) : rows;
+
+        List<ConversationSummaryDTO> items = page.stream()
+                .map(this::toSummaryDTO)
+                .collect(Collectors.toList());
+
+        Instant nextCursor = null;
+        if (hasMore && !page.isEmpty()) {
+            ConversationRowProjection last = page.get(page.size() - 1);
+            nextCursor = last.getLastMessageCreatedAt() != null
+                    ? last.getLastMessageCreatedAt()
+                    : last.getConversationCreatedAt();
+        }
+
+        ConversationListDTO result = new ConversationListDTO();
+        result.setItems(items);
+        result.setNextCursor(nextCursor);
+        result.setHasMore(hasMore);
+
+        return ApiResponse.ok("OK", result);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ApiResponse<ConversationDetailDTO> getConversationDetail(Long conversationId) {
+        User currentUser = currentUserProvider.findCurrentUserOrThrow();
+        Conversation conversation = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND, "Conversation not found"));
+
+        if (!conversationParticipantRepository.existsByConversation_IdAndUser_Id(conversationId, currentUser.getId())) {
+            throw new AppException(ErrorCode.FORBIDDEN, "You are not a participant of this conversation");
+        }
+
+        List<ConversationParticipant> participants =
+                conversationParticipantRepository.findAllByConversation_IdOrderByJoinedAtAsc(conversationId);
+
+        ConversationDetailDTO detailDTO = conversationMapper.toConversationDetailDTO(conversation, participants);
+        return ApiResponse.ok("OK", detailDTO);
+    }
+
+    private ConversationSummaryDTO toSummaryDTO(ConversationRowProjection row) {
+        ConversationSummaryDTO dto = new ConversationSummaryDTO();
+        dto.setId(row.getId());
+        dto.setType(ConversationType.valueOf(row.getType()));
+        dto.setTitle(row.getTitle());
+        dto.setAvatarUrl(row.getAvatarUrl());
+        dto.setCreatedAt(row.getConversationCreatedAt());
+
+        if (row.getLastMessageId() != null) {
+            LastMessageDTO lastMsg = new LastMessageDTO();
+            lastMsg.setId(row.getLastMessageId());
+            lastMsg.setContent(row.getLastMessageContent());
+            lastMsg.setType(row.getLastMessageType() != null
+                    ? MessageType.valueOf(row.getLastMessageType()) : null);
+            lastMsg.setSenderId(row.getLastMessageSenderId());
+            lastMsg.setSenderUsername(row.getSenderUsername());
+            lastMsg.setCreatedAt(row.getLastMessageCreatedAt());
+            lastMsg.setDeleted(Boolean.TRUE.equals(row.getLastMessageIsDeleted()));
+            dto.setLastMessage(lastMsg);
+        }
+
+        dto.setUnreadCount(row.getUnreadCount() != null ? row.getUnreadCount().intValue() : 0);
+
+        if (row.getOtherUserId() != null) {
+            OtherParticipantDTO other = new OtherParticipantDTO();
+            other.setUserId(row.getOtherUserId());
+            other.setUsername(row.getOtherUsername());
+            other.setAvatarUrl(row.getOtherAvatarUrl());
+            other.setOnline(Boolean.TRUE.equals(row.getIsOnline()));
+            dto.setOtherParticipant(other);
+        }
+
+        return dto;
     }
 }
