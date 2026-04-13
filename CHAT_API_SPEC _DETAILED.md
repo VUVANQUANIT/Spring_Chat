@@ -751,7 +751,7 @@ Không có body.
 
 | Param | Kiểu | Mô tả |
 |---|---|---|
-| `cursor` | string | Con trỏ phân trang (ISO timestamp hoặc ID tin nhắn cuối), mặc định không truyền = lần đầu |
+| `cursor` | string | Con trỏ phân trang theo thời gian sắp xếp của item cuối trang trước (ISO timestamp), mặc định không truyền = lần đầu |
 | `limit` | int | Số lượng, mặc định 20, max 50 |
 
 **Response: `200 OK`**
@@ -768,7 +768,7 @@ Không có body.
         "title": null,
         "avatarUrl": null,
         "createdAt": "2026-03-19T10:13:00.000Z",
-        "lastMessage": {
+        "lastMessage": {                  
           "id": 101,
           "content": "Hello!",
           "type": "TEXT",
@@ -794,10 +794,28 @@ Không có body.
 ```
 
 **Business rules:**
-- Chỉ trả conversations mà `currentUser` là participant và chưa `leftAt`.
-- Sắp xếp theo `lastMessage.createdAt` DESC.
+- Chỉ trả conversations mà `currentUser` là participant.
+- Nếu participant của `currentUser` có `leftAt = null` thì conversation hoạt động bình thường.
+- Nếu participant của `currentUser` có `leftAt != null` thì conversation vẫn được trả về, nhưng chỉ hiển thị dữ liệu tin nhắn có `message.createdAt <= leftAt`.
+- `lastMessage` là tin nhắn mới nhất còn nhìn thấy được bởi `currentUser`.
+  - Nếu chưa rời conversation: lấy tin nhắn mới nhất hiện tại.
+  - Nếu đã rời conversation: lấy tin nhắn mới nhất có `createdAt <= leftAt`.
+- Nếu conversation chưa có tin nhắn nào, hoặc không có tin nhắn nào còn nhìn thấy được sau khi áp dụng rule `leftAt`, thì `lastMessage = null`.
+- Thứ tự sắp xếp inbox:
+  - Ưu tiên `lastMessage.createdAt DESC` nếu `lastMessage != null`.
+  - Nếu `lastMessage = null` thì fallback về `conversation.createdAt DESC`.
+  - Nếu trùng thời gian thì tie-break bằng `conversation.id DESC`.
 - `otherParticipant` chỉ có ý nghĩa với `PRIVATE`. Với `GROUP` trả `null`.
+- Với `PRIVATE`, `otherParticipant` được xác định từ `conversation_participant`: lấy participant còn lại trong cùng `conversationId`, khác `currentUser`.
+- Với `GROUP`, `title` và `avatarUrl` lấy trực tiếp từ thông tin của `conversation`, không suy ra từ danh sách member.
+- `unreadCount` là số tin nhắn chưa đọc của `currentUser` trong conversation, được tính theo trạng thái đọc gần nhất lưu trong bảng `message_status`.
+  - Mốc đọc sử dụng `message_status.updated_at` (hoặc trường thời gian tương đương trong thiết kế thực tế).
+  - Với conversation mà `currentUser` đã `leftAt`, chỉ tính trên tập message có `createdAt <= leftAt`.
 - Cursor-based pagination (không dùng offset để tránh mất tin khi có tin mới).
+- `cursor` được hiểu là thời gian sắp xếp của item cuối cùng ở trang trước.
+  - Trang đầu: không truyền `cursor`.
+  - Trang sau: lấy các conversation có thời gian sắp xếp nhỏ hơn `cursor`.
+- `nextCursor` là thời gian sắp xếp của item cuối cùng trong `items`; nếu không còn dữ liệu thì trả `null`.
 
 ---
 
