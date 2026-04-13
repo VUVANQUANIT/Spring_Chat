@@ -48,6 +48,7 @@ class ConversationServiceImplTest {
     @Mock private ConversationParticipantRepository conversationParticipantRepository;
     @Mock private ConversationMapper conversationMapper;
     @Mock private MessageRepository messageRepository;
+    @Mock private com.Spring_chat.Web_chat.repository.FriendshipRepository friendshipRepository;
 
     private CurrentUserProvider currentUserProvider;
     private ConversationServiceImpl conversationService;
@@ -61,7 +62,8 @@ class ConversationServiceImplTest {
                 currentUserProvider,
                 conversationParticipantRepository,
                 conversationMapper,
-                messageRepository
+                messageRepository,
+                friendshipRepository
         );
     }
 
@@ -319,62 +321,47 @@ class ConversationServiceImplTest {
     @Nested
     @DisplayName("updateConversation")
     class UpdateConversation {
+        // ... (existing tests)
+    }
+
+    @Nested
+    @DisplayName("addUserToConversation")
+    class AddUserToConversation {
 
         @Test
-        @DisplayName("update thành công bởi owner")
-        void ownerShouldUpdateSuccessfully() {
+        @DisplayName("thêm thành viên thành công bởi owner")
+        void ownerShouldAddUserSuccessfully() {
             setCurrentUser(1L, "alice");
-            User alice = User.builder().id(1L).username("alice").roles(Collections.emptySet()).build();
+            User alice = User.builder().id(1L).username("alice").build();
+            User bob = User.builder().id(2L).username("bob").build();
             Conversation conversation = Conversation.builder()
                     .id(5L)
                     .type(ConversationType.GROUP)
                     .owner(alice)
-                    .title("Old Title")
                     .build();
 
-            com.Spring_chat.Web_chat.dto.conversations.UpdateConversationDTO request =
-                    com.Spring_chat.Web_chat.dto.conversations.UpdateConversationDTO.builder()
-                            .title("  New Title  ")
-                            .avatarUrl("  https://new.url  ")
-                            .build();
+            com.Spring_chat.Web_chat.dto.conversations.ListUserDTO request = new com.Spring_chat.Web_chat.dto.conversations.ListUserDTO();
+            request.setUserIds(new Long[]{2L});
 
             given(userRepository.findById(1L)).willReturn(Optional.of(alice));
             given(conversationRepository.findById(5L)).willReturn(Optional.of(conversation));
+            given(userRepository.findById(2L)).willReturn(Optional.of(bob));
+            given(friendshipRepository.findByRequesterAndAddressee(alice, bob)).willReturn(null);
+            given(conversationParticipantRepository.findByConversation_IdAndUser(5L, bob)).willReturn(null);
 
-            ApiResponse<com.Spring_chat.Web_chat.dto.conversations.UpdateConversationDTO> response =
-                    conversationService.updateConversation(5L, request);
+            ApiResponse<com.Spring_chat.Web_chat.dto.conversations.ListUserDTO> response =
+                    conversationService.addUserToConversation(5L, request);
 
             assertThat(response.isSuccess()).isTrue();
-            assertThat(response.getData().getTitle()).isEqualTo("New Title");
-            assertThat(response.getData().getAvatarUrl()).isEqualTo("https://new.url");
-            then(conversationRepository).should().save(conversation);
+            then(conversationParticipantRepository).should().save(any(ConversationParticipant.class));
         }
 
         @Test
-        @DisplayName("PRIVATE conversation không được update -> BUSINESS_RULE_VIOLATED")
-        void privateConversationShouldThrow() {
-            setCurrentUser(1L, "alice");
-            User alice = User.builder().id(1L).username("alice").build();
-            Conversation conversation = Conversation.builder()
-                    .id(5L)
-                    .type(ConversationType.PRIVATE)
-                    .build();
-
-            given(userRepository.findById(1L)).willReturn(Optional.of(alice));
-            given(conversationRepository.findById(5L)).willReturn(Optional.of(conversation));
-
-            assertThatThrownBy(() -> conversationService.updateConversation(5L, new com.Spring_chat.Web_chat.dto.conversations.UpdateConversationDTO()))
-                    .isInstanceOf(AppException.class)
-                    .extracting(e -> ((AppException) e).getErrorCode())
-                    .isEqualTo(ErrorCode.BUSINESS_RULE_VIOLATED);
-        }
-
-        @Test
-        @DisplayName("không phải owner/admin -> FORBIDDEN")
-        void nonOwnerNonAdminShouldThrowForbidden() {
+        @DisplayName("không phải owner -> FORBIDDEN")
+        void nonOwnerShouldThrowForbidden() {
             setCurrentUser(2L, "bob");
             User alice = User.builder().id(1L).username("alice").build();
-            User bob = User.builder().id(2L).username("bob").roles(Collections.emptySet()).build();
+            User bob = User.builder().id(2L).username("bob").build();
             Conversation conversation = Conversation.builder()
                     .id(5L)
                     .type(ConversationType.GROUP)
@@ -384,10 +371,67 @@ class ConversationServiceImplTest {
             given(userRepository.findById(2L)).willReturn(Optional.of(bob));
             given(conversationRepository.findById(5L)).willReturn(Optional.of(conversation));
 
-            assertThatThrownBy(() -> conversationService.updateConversation(5L, new com.Spring_chat.Web_chat.dto.conversations.UpdateConversationDTO()))
+            assertThatThrownBy(() -> conversationService.addUserToConversation(5L, new com.Spring_chat.Web_chat.dto.conversations.ListUserDTO()))
                     .isInstanceOf(AppException.class)
                     .extracting(e -> ((AppException) e).getErrorCode())
                     .isEqualTo(ErrorCode.FORBIDDEN);
+        }
+
+        @Test
+        @DisplayName("thêm người đã block -> CANNOT_INVATE_BLOCK")
+        void addingBlockedUserShouldThrow() {
+            setCurrentUser(1L, "alice");
+            User alice = User.builder().id(1L).username("alice").build();
+            User bob = User.builder().id(2L).username("bob").build();
+            Conversation conversation = Conversation.builder()
+                    .id(5L)
+                    .type(ConversationType.GROUP)
+                    .owner(alice)
+                    .build();
+
+            com.Spring_chat.Web_chat.dto.conversations.ListUserDTO request = new com.Spring_chat.Web_chat.dto.conversations.ListUserDTO();
+            request.setUserIds(new Long[]{2L});
+
+            given(userRepository.findById(1L)).willReturn(Optional.of(alice));
+            given(conversationRepository.findById(5L)).willReturn(Optional.of(conversation));
+            given(userRepository.findById(2L)).willReturn(Optional.of(bob));
+
+            com.Spring_chat.Web_chat.entity.Friendship friendship = new com.Spring_chat.Web_chat.entity.Friendship();
+            friendship.setStatus(com.Spring_chat.Web_chat.enums.FriendshipStatus.BLOCKED);
+
+            given(friendshipRepository.findByRequesterAndAddressee(alice, bob)).willReturn(friendship);
+
+            assertThatThrownBy(() -> conversationService.addUserToConversation(5L, request))
+                    .isInstanceOf(AppException.class)
+                    .extracting(e -> ((AppException) e).getErrorCode())
+                    .isEqualTo(ErrorCode.CANNOT_INVATE_BLOCK);
+        }
+
+        @Test
+        @DisplayName("thêm người đã là thành viên -> không làm gì (idempotent)")
+        void addingExistingParticipantShouldDoNothing() {
+            setCurrentUser(1L, "alice");
+            User alice = User.builder().id(1L).username("alice").build();
+            User bob = User.builder().id(2L).username("bob").build();
+            Conversation conversation = Conversation.builder()
+                    .id(5L)
+                    .type(ConversationType.GROUP)
+                    .owner(alice)
+                    .build();
+
+            com.Spring_chat.Web_chat.dto.conversations.ListUserDTO request = new com.Spring_chat.Web_chat.dto.conversations.ListUserDTO();
+            request.setUserIds(new Long[]{2L});
+
+            given(userRepository.findById(1L)).willReturn(Optional.of(alice));
+            given(conversationRepository.findById(5L)).willReturn(Optional.of(conversation));
+            given(userRepository.findById(2L)).willReturn(Optional.of(bob));
+            given(friendshipRepository.findByRequesterAndAddressee(alice, bob)).willReturn(null);
+            given(conversationParticipantRepository.findByConversation_IdAndUser(5L, bob))
+                    .willReturn(ConversationParticipant.builder().build());
+
+            conversationService.addUserToConversation(5L, request);
+
+            then(conversationParticipantRepository).should(org.mockito.Mockito.never()).save(any());
         }
     }
 }

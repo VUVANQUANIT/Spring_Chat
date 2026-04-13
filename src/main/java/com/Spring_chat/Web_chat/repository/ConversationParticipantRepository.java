@@ -2,6 +2,7 @@ package com.Spring_chat.Web_chat.repository;
 
 import com.Spring_chat.Web_chat.dto.conversations.ConversationRowProjection;
 import com.Spring_chat.Web_chat.entity.ConversationParticipant;
+import com.Spring_chat.Web_chat.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -97,4 +98,6 @@ public interface ConversationParticipantRepository extends JpaRepository<Convers
             @Param("cursor") String cursor,
             @Param("limit")  int    limit
     );
+
+    ConversationParticipant findByConversation_IdAndUser(Long conversationId, User user);
 }

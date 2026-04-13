@@ -4,16 +4,15 @@ import com.Spring_chat.Web_chat.dto.ApiResponse;
 import com.Spring_chat.Web_chat.dto.conversations.*;
 import com.Spring_chat.Web_chat.entity.Conversation;
 import com.Spring_chat.Web_chat.entity.ConversationParticipant;
+import com.Spring_chat.Web_chat.entity.Friendship;
 import com.Spring_chat.Web_chat.entity.User;
 import com.Spring_chat.Web_chat.enums.ConversationType;
+import com.Spring_chat.Web_chat.enums.FriendshipStatus;
 import com.Spring_chat.Web_chat.enums.MessageType;
 import com.Spring_chat.Web_chat.exception.AppException;
 import com.Spring_chat.Web_chat.exception.ErrorCode;
 import com.Spring_chat.Web_chat.mappers.ConversationMapper;
-import com.Spring_chat.Web_chat.repository.ConversationParticipantRepository;
-import com.Spring_chat.Web_chat.repository.ConversationRepository;
-import com.Spring_chat.Web_chat.repository.MessageRepository;
-import com.Spring_chat.Web_chat.repository.UserRepository;
+import com.Spring_chat.Web_chat.repository.*;
 import com.Spring_chat.Web_chat.service.common.CurrentUserProvider;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,6 +34,7 @@ public class ConversationServiceImpl implements ConversationService {
     private final ConversationParticipantRepository conversationParticipantRepository;
     private final ConversationMapper conversationMapper;
     private final MessageRepository messageRepository;
+    private final FriendshipRepository friendshipRepository;
 
     @Override
     @Transactional
@@ -219,6 +219,72 @@ public class ConversationServiceImpl implements ConversationService {
                 .build();
 
         return ApiResponse.ok("Conversation updated", response);
+    }
+
+    @Override
+    @Transactional
+    public ApiResponse<ListUserDTO> addUserToConversation(Long conversationId, ListUserDTO listUserDTO) {
+        User currentUser = currentUserProvider.findCurrentUserOrThrow();
+        Conversation conversation = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND, "Không tìm thấy cuộc hội thoại"));
+
+        if (conversation.getType() == ConversationType.PRIVATE) {
+            throw new AppException(ErrorCode.BUSINESS_RULE_VIOLATED, "Không thể thêm thành viên vào cuộc hội thoại PRIVATE");
+        }
+
+        boolean isOwner = conversation.getOwner() != null && conversation.getOwner().getId().equals(currentUser.getId());
+        if (!isOwner) {
+            throw new AppException(ErrorCode.FORBIDDEN, "Bạn không phải là chủ của group nên không thể thêm");
+        }
+
+        if (listUserDTO.getUserIds() == null || listUserDTO.getUserIds().length == 0) {
+            throw new AppException(ErrorCode.MISSING_PARAMETER, "Không có dữ liệu của người thêm vào");
+        }
+
+        for (Long userId : listUserDTO.getUserIds()) {
+            addParticipantToConversation(conversation, userId, currentUser);
+        }
+
+        return ApiResponse.ok("Thêm thành công người dùng vào cuộc hội thoại", listUserDTO);
+    }
+
+    private void addParticipantToConversation(Conversation conversation, Long participantId, User currentUser) {
+        if (participantId.equals(currentUser.getId())) {
+            return; // Chủ nhóm đã ở trong nhóm rồi
+        }
+
+        User participant = userRepository.findById(participantId)
+                .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND, "Không tìm thấy người dùng ID: " + participantId));
+
+        // Kiểm tra block (người được thêm có block chủ nhóm không? Hoặc ngược lại)
+        // Trong spec 4.5: "User bị block bởi owner -> từ chối."
+        Friendship friendship = friendshipRepository.findByRequesterAndAddressee(currentUser, participant);
+        if (friendship != null && friendship.getStatus() == FriendshipStatus.BLOCKED) {
+            throw new AppException(ErrorCode.CANNOT_INVATE_BLOCK, "Không thể mời người đã block hoặc bị block bởi bạn");
+        }
+
+        // Cũng cần check chiều ngược lại nếu spec yêu cầu chặt chẽ (hoặc dùng findByUsers)
+        Friendship reverseFriendship = friendshipRepository.findByRequesterAndAddressee(participant, currentUser);
+        if (reverseFriendship != null && reverseFriendship.getStatus() == FriendshipStatus.BLOCKED) {
+             throw new AppException(ErrorCode.CANNOT_INVATE_BLOCK, "Không thể mời vì tồn tại quan hệ block");
+        }
+
+        ConversationParticipant conversationParticipant = conversationParticipantRepository
+                .findByConversation_IdAndUser(conversation.getId(), participant);
+
+        if (conversationParticipant == null) {
+            ConversationParticipant newParticipant = ConversationParticipant.builder()
+                    .conversation(conversation)
+                    .user(participant)
+                    .joinedAt(Instant.now())
+                    .build();
+            conversationParticipantRepository.save(newParticipant);
+        } else if (conversationParticipant.getLeftAt() != null) {
+            // Re-join if they left before
+            conversationParticipant.setLeftAt(null);
+            conversationParticipantRepository.save(conversationParticipant);
+        }
+        // If already in group (joinedAt != null && leftAt == null), do nothing (idempotent)
     }
 
     private ConversationSummaryDTO toSummaryDTO(ConversationRowProjection row) {

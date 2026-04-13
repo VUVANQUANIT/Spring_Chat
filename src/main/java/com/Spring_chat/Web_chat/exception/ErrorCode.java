@@ -31,6 +31,7 @@ public enum ErrorCode {
     BUSINESS_RULE_VIOLATED(HttpStatus.UNPROCESSABLE_CONTENT,"Không gửi được lời mới cho chính mình"),
     CANNOT_BLOCK_SELF(HttpStatus.UNPROCESSABLE_CONTENT,"Không thể chặn chính mình"),
     CANNOT_DELETE_SELF(HttpStatus.UNPROCESSABLE_CONTENT,"Không thể chặn chính mình"),
+    CANNOT_INVATE_BLOCK(HttpStatus.UNPROCESSABLE_CONTENT,"Không thể mời người đã block"),
     // ── 500 Internal Server Error ─────────────────────────────────────────────
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "Lỗi hệ thống, vui lòng thử lại sau");
 
