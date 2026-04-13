@@ -280,22 +280,22 @@ public class ConversationServiceImpl implements ConversationService {
 
         // Nếu chủ nhóm rời đi -> chuyển quyền owner
         if (isSelf && isOwner) {
-            transferOwnership(conversation);
+            transferOwnership(conversation, userId);
         }
 
         return ApiResponse.ok("Participant removed", null);
     }
 
-    private void transferOwnership(Conversation conversation) {
-        // Tìm người còn lại gia nhập sớm nhất
+    private void transferOwnership(Conversation conversation, Long leavingOwnerId) {
+        // Tìm người còn lại gia nhập sớm nhất, loại trừ người đang rời đi
         Optional<ConversationParticipant> nextOwnerParticipant = conversationParticipantRepository
-                .findFirstByConversation_IdAndLeftAtIsNullOrderByJoinedAtAsc(conversation.getId());
+                .findFirstByConversation_IdAndUser_IdNotAndLeftAtIsNullOrderByJoinedAtAsc(conversation.getId(), leavingOwnerId);
 
         if (nextOwnerParticipant.isPresent()) {
             conversation.setOwner(nextOwnerParticipant.get().getUser());
             conversationRepository.save(conversation);
         } else {
-            // Không còn ai trong nhóm -> Xóa owner hoặc có thể mark conversation là INACTIVE
+            // Không còn ai trong nhóm -> Xóa owner
             conversation.setOwner(null);
             conversationRepository.save(conversation);
         }
@@ -309,17 +309,10 @@ public class ConversationServiceImpl implements ConversationService {
         User participant = userRepository.findById(participantId)
                 .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND, "Không tìm thấy người dùng ID: " + participantId));
 
-        // Kiểm tra block (người được thêm có block chủ nhóm không? Hoặc ngược lại)
-        // Trong spec 4.5: "User bị block bởi owner -> từ chối."
-        Friendship friendship = friendshipRepository.findByRequesterAndAddressee(currentUser, participant);
-        if (friendship != null && friendship.getStatus() == FriendshipStatus.BLOCKED) {
-            throw new AppException(ErrorCode.CANNOT_INVATE_BLOCK, "Không thể mời người đã block hoặc bị block bởi bạn");
-        }
-
-        // Cũng cần check chiều ngược lại nếu spec yêu cầu chặt chẽ (hoặc dùng findByUsers)
-        Friendship reverseFriendship = friendshipRepository.findByRequesterAndAddressee(participant, currentUser);
-        if (reverseFriendship != null && reverseFriendship.getStatus() == FriendshipStatus.BLOCKED) {
-             throw new AppException(ErrorCode.CANNOT_INVATE_BLOCK, "Không thể mời vì tồn tại quan hệ block");
+        // Kiểm tra block hai chiều (chuẩn production: dùng findBetweenUsers)
+        Optional<Friendship> friendship = friendshipRepository.findBetweenUsers(currentUser.getId(), participantId);
+        if (friendship.isPresent() && friendship.get().getStatus() == FriendshipStatus.BLOCKED) {
+            throw new AppException(ErrorCode.CANNOT_INVATE_BLOCK, "Không thể mời do tồn tại quan hệ block giữa hai người");
         }
 
         ConversationParticipant conversationParticipant = conversationParticipantRepository
