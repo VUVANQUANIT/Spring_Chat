@@ -1,0 +1,119 @@
+name: Gemini AI Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main, dev]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    name: AI Code Review
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -q -U google-generativeai
+
+      - name: Get PR Diff
+        id: get_diff
+        run: |
+          # Lấy diff giữa branch hiện tại và branch đích
+          git diff origin/${{ github.base_ref }}...origin/${{ github.head_ref }} > pr_diff.txt
+          echo "diff_size=$(wc -c < pr_diff.txt)" >> $GITHUB_OUTPUT
+
+      - name: Run Gemini Review
+        id: gemini_review
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python << 'EOF'
+          import os
+          import google.generativeai as genai
+
+          api_key = os.environ.get("GEMINI_API_KEY")
+          if not api_key:
+              print("Error: GEMINI_API_KEY is not set.")
+              exit(1)
+
+          genai.configure(api_key=api_key)
+          
+          # Sử dụng flash để phản hồi nhanh, giá rẻ/miễn phí và context window lớn
+          model = genai.GenerativeModel("gemini-1.5-flash")
+
+          try:
+              with open("pr_diff.txt", "r", encoding="utf-8") as f:
+                  diff_content = f.read()
+          except Exception as e:
+              print(f"Error reading diff: {e}")
+              exit(1)
+
+          if len(diff_content.strip()) < 10:
+              with open("review_result.md", "w", encoding="utf-8") as f:
+                  f.write("Thay đổi quá nhỏ để AI có thể đưa ra nhận xét ý nghĩa.")
+              exit(0)
+
+          prompt = f"""
+          Bạn là một Senior Software Engineer và Architect chuyên nghiệp, có tâm.
+          Nhiệm vụ của bạn là review đoạn mã nguồn (diff) dưới đây cho một dự án Spring Boot (Java).
+
+          Hãy phân tích cực kỳ kỹ lưỡng và đưa ra nhận xét theo các tiêu chuẩn production:
+          1. **Lỗi Logic & Bug**: Các trường hợp biên (edge cases), lỗi sai luồng nghiệp vụ.
+          2. **Bảo mật (Security)**: SQL Injection, lộ thông tin nhạy cảm, lỗi phân quyền (RBAC), XSS, v.v.
+          3. **Hiệu năng (Performance)**: N+1 query trong JPA/Hibernate, rò rỉ bộ nhớ, vòng lặp dư thừa.
+          4. **Clean Code & Coding Standards**: Đặt tên (Naming), độ phức tạp của hàm, tuân thủ SOLID và Design Patterns.
+          5. **Khả năng bảo trì & Test**: Code có dễ hiểu không? Có cần bổ sung Unit Test không?
+
+          Yêu cầu về hình thức phản hồi:
+          - Ngôn ngữ: **Tiếng Việt** (Chuyên nghiệp, ngắn gọn, súc tích).
+          - Nếu thấy vấn đề, hãy chỉ rõ file và đoạn code tương ứng.
+          - Nếu code tốt, hãy đưa ra lời khen ngợi xứng đáng và chỉ ra điểm bạn thích.
+          - Định dạng: Markdown (sử dụng tiêu đề, danh sách gạch đầu dòng, code block).
+
+          Nội dung Diff cần review:
+          {diff_content}
+          """
+
+          try:
+              response = model.generate_content(prompt)
+              review_text = response.text
+          except Exception as e:
+              review_text = f"Đã có lỗi xảy ra khi gọi Gemini API: {str(e)}"
+
+          with open("review_result.md", "w", encoding="utf-8") as f:
+              f.write(review_text)
+          EOF
+
+      - name: Post Comment to PR
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const reviewBody = fs.readFileSync('review_result.md', 'utf8');
+            
+            const commentHeader = "### 🤖 Gemini AI Code Review\n\n";
+            const finalBody = commentHeader + reviewBody;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: finalBody
+            });
