@@ -77,7 +77,8 @@ class MessageRepositoryTest {
 
         // Lấy danh sách tin nhắn
         List<MessageRowProjection> messages = messageRepository.findMessagesByConversation(
-                conversation.getId(), sender.getId(), null, 10);
+                conversation.getId(), sender.getId(), null, null, 10);
+
 
         assertThat(messages).hasSize(3);
         // Thứ tự mong đợi: m3 (mới nhất, id lớn hơn), m2 (mới nhất, id nhỏ hơn m3), m1 (cũ nhất)
@@ -100,8 +101,10 @@ class MessageRepositoryTest {
         entityManager.clear();
 
         // Lấy tin nhắn cũ hơn m3 (beforeId = m3.getId())
+        Instant beforeCreatedAt = messageRepository.findCreatedAtById(m3.getId());
         List<MessageRowProjection> messages = messageRepository.findMessagesByConversation(
-                conversation.getId(), sender.getId(), m3.getId(), 2);
+                conversation.getId(), sender.getId(), beforeCreatedAt, m3.getId(), 2);
+
 
         // Tin nhắn trả về phải là m2 và m1, bỏ qua m4 và m3
         assertThat(messages).hasSize(2);

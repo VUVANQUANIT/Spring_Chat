@@ -19,8 +19,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
 import java.time.Instant;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -33,13 +36,18 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class MessageServiceImplTest {
+
 
     @Mock
     private MessageRepository messageRepository;
 
     @Mock
     private ConversationParticipantRepository conversationParticipantRepository;
+
+    @Mock
+    private com.Spring_chat.Web_chat.repository.MessageDeliveryStatusRepo messageDeliveryStatusRepo;
 
     @Mock
     private CurrentUserProvider currentUserProvider;
@@ -81,12 +89,15 @@ class MessageServiceImplTest {
                 given(row.getCreatedAt()).willReturn(Instant.now());
                 given(row.getSenderId()).willReturn(2L);
                 given(row.getSenderUsername()).willReturn("sender2");
+                given(row.getSenderAvatar()).willReturn("avatar2");
                 given(row.getMyStatus()).willReturn(MessageDeliveryStatus.SEEN);
                 mockRows.add(row);
             }
 
-            given(messageRepository.findMessagesByConversation(conversationId, currentUser.getId(), beforeId, requestedLimit + 1))
+            given(messageRepository.findMessagesByConversation(conversationId, currentUser.getId(), null, beforeId, requestedLimit + 1))
                     .willReturn(mockRows);
+            given(messageDeliveryStatusRepo.findAllByMessage_IdIn(org.mockito.ArgumentMatchers.anyList()))
+                    .willReturn(new ArrayList<>());
 
             // When
             ApiResponse<MessageListResponseDTO> response = messageService.getMessageList(beforeId, requestedLimit, conversationId);
@@ -107,23 +118,39 @@ class MessageServiceImplTest {
             Long conversationId = 100L;
             Integer requestedLimit = 2;
             Long beforeId = 50L;
+            Instant beforeCreatedAt = Instant.now().minusSeconds(60);
 
             given(currentUserProvider.findCurrentUserOrThrow()).willReturn(currentUser);
             given(conversationParticipantRepository.existsByConversation_IdAndUser_Id(conversationId, currentUser.getId()))
                     .willReturn(true);
+            given(messageRepository.findCreatedAtById(beforeId)).willReturn(beforeCreatedAt);
 
             List<MessageRowProjection> mockRows = new ArrayList<>();
             for (int i = 0; i < 3; i++) {
                 MessageRowProjection row = mock(MessageRowProjection.class);
-                if (i < 2) {
+                if (i < 2) { // only first 2 rows are mapped
                     given(row.getId()).willReturn((long) (49 - i));
+                    given(row.getContent()).willReturn("Msg " + i);
                     given(row.getIsDeleted()).willReturn(false);
+                    given(row.getIsEdited()).willReturn(false);
+                    given(row.getType()).willReturn(MessageType.TEXT);
+                    given(row.getCreatedAt()).willReturn(Instant.now());
+                    given(row.getSenderId()).willReturn(2L);
+                    given(row.getSenderUsername()).willReturn("sender2");
+                    given(row.getSenderAvatar()).willReturn("avatar2");
+                    given(row.getMyStatus()).willReturn(MessageDeliveryStatus.DELIVERED);
+                } else {
+                    // Third row is only used to determine hasMore=true (getId() is called for messageIds list)
+                    given(row.getId()).willReturn(47L);
                 }
                 mockRows.add(row);
             }
 
-            given(messageRepository.findMessagesByConversation(conversationId, currentUser.getId(), beforeId, requestedLimit + 1))
+
+            given(messageRepository.findMessagesByConversation(conversationId, currentUser.getId(), beforeCreatedAt, beforeId, requestedLimit + 1))
                     .willReturn(mockRows);
+            given(messageDeliveryStatusRepo.findAllByMessage_IdIn(org.mockito.ArgumentMatchers.anyList()))
+                    .willReturn(new ArrayList<>());
 
             // When
             ApiResponse<MessageListResponseDTO> response = messageService.getMessageList(beforeId, requestedLimit, conversationId);
@@ -148,12 +175,21 @@ class MessageServiceImplTest {
             MessageRowProjection row = mock(MessageRowProjection.class);
             given(row.getId()).willReturn(1L);
             given(row.getIsDeleted()).willReturn(true); 
+            // Add other necessary stubs for toMessageSummary
+            given(row.getSenderId()).willReturn(2L);
+            given(row.getSenderUsername()).willReturn("sender2");
+            given(row.getSenderAvatar()).willReturn("avatar2");
+            given(row.getType()).willReturn(MessageType.TEXT);
+            given(row.getCreatedAt()).willReturn(Instant.now());
+            given(row.getMyStatus()).willReturn(MessageDeliveryStatus.SENT);
 
             List<MessageRowProjection> mockRows = new ArrayList<>();
             mockRows.add(row);
 
-            given(messageRepository.findMessagesByConversation(anyLong(), anyLong(), org.mockito.ArgumentMatchers.isNull(), anyInt()))
+            given(messageRepository.findMessagesByConversation(anyLong(), anyLong(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), anyInt()))
                     .willReturn(mockRows);
+            given(messageDeliveryStatusRepo.findAllByMessage_IdIn(org.mockito.ArgumentMatchers.anyList()))
+                    .willReturn(new ArrayList<>());
 
             // When
             ApiResponse<MessageListResponseDTO> response = messageService.getMessageList(null, 30, conversationId);
@@ -163,6 +199,7 @@ class MessageServiceImplTest {
             assertThat(response.getData().getItems().get(0).getContent()).isNull();
             assertThat(response.getData().getItems().get(0).isDeleted()).isTrue();
         }
+
 
         @Test
         @DisplayName("Báo lỗi FORBIDDEN nếu user không tham gia cuộc hội thoại")
@@ -193,13 +230,18 @@ class MessageServiceImplTest {
             given(currentUserProvider.findCurrentUserOrThrow()).willReturn(currentUser);
             given(conversationParticipantRepository.existsByConversation_IdAndUser_Id(conversationId, currentUser.getId()))
                     .willReturn(true);
+            given(messageRepository.findMessagesByConversation(anyLong(), anyLong(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), anyInt()))
+                    .willReturn(new ArrayList<>());
+            given(messageDeliveryStatusRepo.findAllByMessage_IdIn(org.mockito.ArgumentMatchers.anyList()))
+                    .willReturn(new ArrayList<>());
 
             // When
             messageService.getMessageList(beforeId, requestedLimit, conversationId);
 
             // Then
             // Verify that the repository is called with 100 + 1 instead of 150 + 1
-            verify(messageRepository).findMessagesByConversation(conversationId, currentUser.getId(), beforeId, 101);
+            verify(messageRepository).findMessagesByConversation(conversationId, currentUser.getId(), null, beforeId, 101);
         }
+
     }
 }
