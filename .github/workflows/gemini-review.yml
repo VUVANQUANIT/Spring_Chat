@@ -54,14 +54,14 @@ jobs:
 
           genai.configure(api_key=api_key)
           
-          # Sử dụng gemini-1.5-pro để có kết quả review sâu sắc nhất và ổn định nhất
-          model_name = "gemini-1.5-pro"
+          # Sử dụng gemini-2.0-flash - model cực nhanh và thông minh có trong danh sách của bạn
+          model_name = "gemini-2.0-flash"
           
           try:
               model = genai.GenerativeModel(model_name)
           except Exception as e:
-              # Fallback sang gemini-1.5-flash nếu pro không khả dụng
-              model = genai.GenerativeModel("gemini-1.5-flash")
+              # Fallback sang một model chắc chắn có khác nếu cần
+              model = genai.GenerativeModel("gemini-pro-latest")
 
           try:
               with open("pr_diff.txt", "r", encoding="utf-8") as f:
