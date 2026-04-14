@@ -65,12 +65,13 @@ public class AuthController {
         authService.logout(principal.id());
     }
 
-    // ─── Helpers ──────────────────────────────────────────────────────────────
-
     private String extractClientIp(HttpServletRequest request) {
         String forwarded = request.getHeader("X-Forwarded-For");
         if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
+            String firstIp = forwarded.split(",")[0].trim();
+            if (firstIp.matches("^[0-9a-fA-F.:]{2,45}$")) {
+                return firstIp;
+            }
         }
         return request.getRemoteAddr();
     }

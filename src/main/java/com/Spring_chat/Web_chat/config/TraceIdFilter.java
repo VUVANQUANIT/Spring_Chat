@@ -11,12 +11,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
-/**
- * Gắn traceId vào MDC cho mỗi request để debug và log.
- * Header X-Trace-Id từ client sẽ được ưu tiên dùng lại.
- * traceId cũng được trả về trong ApiErrorResponse khi có lỗi.
- */
 @Component
 @Order(1)
 public class TraceIdFilter extends OncePerRequestFilter {
@@ -24,14 +20,13 @@ public class TraceIdFilter extends OncePerRequestFilter {
     private static final String TRACE_ID_HEADER = "X-Trace-Id";
     private static final String MDC_KEY = "traceId";
 
+    private static final Pattern SAFE_TRACE_ID = Pattern.compile("^[a-zA-Z0-9\\-]{1,64}$");
+
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
-        String traceId = request.getHeader(TRACE_ID_HEADER);
-        if (traceId == null || traceId.isBlank()) {
-            traceId = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
-        }
+        String traceId = sanitizeTraceId(request.getHeader(TRACE_ID_HEADER));
         MDC.put(MDC_KEY, traceId);
         response.setHeader(TRACE_ID_HEADER, traceId);
         try {
@@ -39,5 +34,12 @@ public class TraceIdFilter extends OncePerRequestFilter {
         } finally {
             MDC.remove(MDC_KEY);
         }
+    }
+
+    private String sanitizeTraceId(String raw) {
+        if (raw != null && SAFE_TRACE_ID.matcher(raw).matches()) {
+            return raw;
+        }
+        return UUID.randomUUID().toString().replace("-", "").substring(0, 16);
     }
 }

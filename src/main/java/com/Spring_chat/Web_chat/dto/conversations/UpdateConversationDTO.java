@@ -11,6 +11,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class UpdateConversationDTO {
+
     private Long id;
 
     @Size(max = 100, message = "Tiêu đề nhóm không được vượt quá 100 ký tự")

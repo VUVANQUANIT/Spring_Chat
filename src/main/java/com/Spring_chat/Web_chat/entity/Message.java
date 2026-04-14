@@ -61,6 +61,24 @@ public class Message {
     @Builder.Default
     private Boolean isDeleted = false;
 
+    @Column(name = "is_edited", nullable = false)
+    @Builder.Default
+    private Boolean isEdited = false;
+
+    @Column(name = "edited_at")
+    private Instant editedAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "edited_by")
+    private User editedBy;
+
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "deleted_by")
+    private User deletedBy;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
