@@ -43,12 +43,17 @@ jobs:
       - name: Determine review mode
         id: review_mode
         run: |
-          LABELS='${{ toJson(github.event.pull_request.labels.*.name) }}'
-          if echo "$LABELS" | grep -q "needs-deep-review"; then
+          # Dùng heredoc để tránh lỗi escape shell nếu label có ký tự đặc biệt
+          cat <<'EOF' > labels.json
+          ${{ toJson(github.event.pull_request.labels.*.name) }}
+          EOF
+          
+          if grep -q "needs-deep-review" labels.json; then
             echo "mode=deep" >> $GITHUB_OUTPUT
           else
             echo "mode=fast" >> $GITHUB_OUTPUT
           fi
+          rm labels.json
 
       - name: Get PR diff and changed file list
         id: get_diff
@@ -74,6 +79,7 @@ jobs:
         run: |
           python << 'PYEOF'
           import os
+          import textwrap
           import google.generativeai as genai
 
           api_key = os.environ.get("GEMINI_API_KEY")
@@ -92,16 +98,16 @@ jobs:
           # ─────────────────────────────────────────────────────────────────────
           if review_mode == "deep":
               model_chain = [
-                  "gemini-2.5-pro",
-                  "gemini-2.5-flash",
-                  "gemini-2.0-flash",
+                  "gemini-1.5-pro",
+                  "gemini-1.5-flash",
+                  "gemini-2.0-flash-exp",
               ]
               mode_label = "🔍 **Deep Review** (label: `needs-deep-review`)"
           else:
               model_chain = [
-                  "gemini-2.5-flash",
-                  "gemini-2.0-flash",
-                  "gemini-2.0-flash-lite",
+                  "gemini-1.5-flash",
+                  "gemini-2.0-flash-exp",
+                  "gemini-1.5-flash-8b",
               ]
               mode_label = "⚡ **Fast Review** (thêm label `needs-deep-review` để dùng model mạnh hơn)"
 
@@ -126,67 +132,68 @@ jobs:
           base_ref  = os.environ.get("BASE_BRANCH", "main")
           head_ref  = os.environ.get("HEAD_BRANCH", "")
 
-          prompt = f"""
-Bạn là một Senior Software Engineer và Architect chuyên nghiệp, đang review Pull Request cho dự án **Spring Boot (Java)**.
+          prompt_raw = f"""
+          Bạn là một Senior Software Engineer và Architect chuyên nghiệp, đang review Pull Request cho dự án **Spring Boot (Java)**.
 
-## Thông tin PR
-| | |
-|---|---|
-| **Tiêu đề** | {pr_title} |
-| **Tác giả** | {pr_author} |
-| **Merge vào** | `{base_ref}` ← `{head_ref}` |
+          ## Thông tin PR
+          | | |
+          |---|---|
+          | **Tiêu đề** | {pr_title} |
+          | **Tác giả** | {pr_author} |
+          | **Merge vào** | `{base_ref}` ← `{head_ref}` |
 
-## File thay đổi
-```
-{changed_files}
-```
+          ## File thay đổi
+          ```
+          {changed_files}
+          ```
 
-## Nội dung Diff (toàn bộ)
-```diff
-{diff_content}
-```
+          ## Nội dung Diff (toàn bộ)
+          ```diff
+          {diff_content}
+          ```
 
----
+          ---
 
-## Hướng dẫn review
+          ## Hướng dẫn review
 
-Phân tích theo 5 tiêu chí sau:
-1. **Lỗi Logic & Bug** — Edge cases, sai luồng nghiệp vụ, race condition, off-by-one.
-2. **Bảo mật** — SQL Injection, lộ thông tin nhạy cảm, lỗi phân quyền (RBAC/ABAC), XSS.
-3. **Hiệu năng** — N+1 query (JPA/Hibernate), vòng lặp thừa, rò rỉ tài nguyên, blocking call.
-4. **Clean Code & SOLID** — Naming, độ phức tạp hàm, dead code, vi phạm SRP/OCP.
-5. **Test Coverage** — Thiếu unit test quan trọng, edge case chưa được cover.
+          Phân tích theo 5 tiêu chí sau:
+          1. **Lỗi Logic & Bug** — Edge cases, sai luồng nghiệp vụ, race condition, off-by-one.
+          2. **Bảo mật** — SQL Injection, lộ thông tin nhạy cảm, lỗi phân quyền (RBAC/ABAC), XSS.
+          3. **Hiệu năng** — N+1 query (JPA/Hibernate), vòng lặp thừa, rò rỉ tài nguyên, blocking call.
+          4. **Clean Code & SOLID** — Naming, độ phức tạp hàm, dead code, vi phạm SRP/OCP.
+          5. **Test Coverage** — Thiếu unit test quan trọng, edge case chưa được cover.
 
-## Định dạng phản hồi BẮT BUỘC
+          ## Định dạng phản hồi BẮT BUỘC
 
-Trả về đúng cấu trúc Markdown sau, **không thêm bớt tiêu đề**:
+          Trả về đúng cấu trúc Markdown sau, **không thêm bớt tiêu đề**:
 
-### 📊 Tổng quan
-[1–3 câu nhận xét tổng quan: mục tiêu PR, chất lượng tổng thể, rủi ro chính nếu có]
+          ### 📊 Tổng quan
+          [1–3 câu nhận xét tổng quan: mục tiêu PR, chất lượng tổng thể, rủi ro chính nếu có]
 
-### 🔴 Critical — Cần sửa ngay trước khi merge
-[Mỗi finding: **File** `path/to/File.java`, mô tả vấn đề + đoạn code liên quan + gợi ý sửa cụ thể]
-[Nếu không có: ghi `Không có.`]
+          ### 🔴 Critical — Cần sửa ngay trước khi merge
+          [Mỗi finding: **File** `path/to/File.java`, mô tả vấn đề + đoạn code liên quan + gợi ý sửa cụ thể]
+          [Nếu không có: ghi `Không có.`]
 
-### 🟠 High — Nên sửa trong PR này
-[Tương tự Critical]
-[Nếu không có: ghi `Không có.`]
+          ### 🟠 High — Nên sửa trong PR này
+          [Tương tự Critical]
+          [Nếu không có: ghi `Không có.`]
 
-### 🟡 Medium — Nên xem xét
-[Tương tự Critical]
-[Nếu không có: ghi `Không có.`]
+          ### 🟡 Medium — Nên xem xét
+          [Tương tự Critical]
+          [Nếu không có: ghi `Không có.`]
 
-### 🟢 Low / Suggestions
-[Gợi ý nhỏ về style, naming, clean code]
-[Nếu không có: ghi `Không có.`]
+          ### 🟢 Low / Suggestions
+          [Gợi ý nhỏ về style, naming, clean code]
+          [Nếu không có: ghi `Không có.`]
 
-### ✅ Điểm tốt
-[1–3 điểm đáng khen trong PR: design tốt, test đầy đủ, naming rõ ràng, v.v.]
+          ### ✅ Điểm tốt
+          [1–3 điểm đáng khen trong PR: design tốt, test đầy đủ, naming rõ ràng, v.v.]
 
----
+          ---
 
-**Lưu ý:** Ngôn ngữ Tiếng Việt, ngắn gọn, chuyên nghiệp. Mỗi finding phải chỉ rõ file và đoạn code cụ thể.
-"""
+          **Lưu ý:** Ngôn ngữ Tiếng Việt, ngắn gọn, chuyên nghiệp. Mỗi finding phải chỉ rõ file và đoạn code cụ thể.
+          """
+          prompt = textwrap.dedent(prompt_raw).strip()
 
           # ─── Thử lần lượt từng model theo chain ──────────────────────────────
           review_text = None
