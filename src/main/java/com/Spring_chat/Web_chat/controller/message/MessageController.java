@@ -1,0 +1,33 @@
+package com.Spring_chat.Web_chat.controller.message;
+
+import com.Spring_chat.Web_chat.dto.ApiResponse;
+import com.Spring_chat.Web_chat.dto.message.MessageListResponseDTO;
+import com.Spring_chat.Web_chat.service.message.MessageService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api/conversations")
+@RequiredArgsConstructor
+public class MessageController {
+
+    private final MessageService messageService;
+
+    /**
+     * GET /api/conversations/{id}/messages
+     * 
+     * Lấy danh sách tin nhắn của một cuộc hội thoại với phân trang cursor.
+     * @param id ID của conversation
+     * @param beforeId Lấy các tin nhắn cũ hơn ID này (scroll up)
+     * @param limit Số lượng tối đa muốn lấy (default 30, max 100)
+     */
+    @GetMapping("/{id}/messages")
+    public ResponseEntity<ApiResponse<MessageListResponseDTO>> getConversationMessages(
+            @PathVariable("id") Long id,
+            @RequestParam(required = false) Long beforeId,
+            @RequestParam(defaultValue = "30", required = false) Integer limit) {
+        
+        return ResponseEntity.ok(messageService.getMessageList(beforeId, limit, id));
+    }
+}
