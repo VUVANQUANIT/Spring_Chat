@@ -47,7 +47,6 @@ class ConversationServiceImplTest {
     @Mock private UserRepository userRepository;
     @Mock private ConversationParticipantRepository conversationParticipantRepository;
     @Mock private ConversationMapper conversationMapper;
-    @Mock private MessageRepository messageRepository;
     @Mock private com.Spring_chat.Web_chat.repository.FriendshipRepository friendshipRepository;
 
     private CurrentUserProvider currentUserProvider;
@@ -62,7 +61,6 @@ class ConversationServiceImplTest {
                 currentUserProvider,
                 conversationParticipantRepository,
                 conversationMapper,
-                messageRepository,
                 friendshipRepository
         );
     }

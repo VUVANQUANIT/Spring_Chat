@@ -33,7 +33,6 @@ public class ConversationServiceImpl implements ConversationService {
     private final CurrentUserProvider currentUserProvider;
     private final ConversationParticipantRepository conversationParticipantRepository;
     private final ConversationMapper conversationMapper;
-    private final MessageRepository messageRepository;
     private final FriendshipRepository friendshipRepository;
 
     @Override
