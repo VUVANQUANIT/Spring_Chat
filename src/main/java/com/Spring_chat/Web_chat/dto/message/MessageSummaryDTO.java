@@ -2,6 +2,7 @@ package com.Spring_chat.Web_chat.dto.message;
 
 import com.Spring_chat.Web_chat.enums.MessageDeliveryStatus;
 import com.Spring_chat.Web_chat.enums.MessageType;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
@@ -27,5 +28,7 @@ public class MessageSummaryDTO {
     private Instant createdAt;
     
     private MessageDeliveryStatus myStatus; // Use Enum, not Entity
+    
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
     private List<DeliveryStatusesDTO> deliveryStatuses; // Must be a list
 }

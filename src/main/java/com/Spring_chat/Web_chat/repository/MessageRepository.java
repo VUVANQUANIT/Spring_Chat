@@ -2,6 +2,7 @@ package com.Spring_chat.Web_chat.repository;
 
 import com.Spring_chat.Web_chat.dto.message.MessageRowProjection;
 import com.Spring_chat.Web_chat.entity.Message;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import org.springframework.data.jpa.repository.Query;
@@ -31,14 +32,13 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
           ))
           AND NOT EXISTS (SELECT 1 FROM message_hidden mh WHERE mh.message_id = m.id AND mh.user_id = :userId)
         ORDER BY m.created_at DESC, m.id DESC
-        LIMIT :limit
         """, nativeQuery = true)
     List<MessageRowProjection> findMessagesByConversation(
             @Param("convId") Long convId,
             @Param("userId") Long userId,
             @Param("beforeCreatedAt") Instant beforeCreatedAt,
             @Param("beforeId") Long beforeId,
-            @Param("limit") int limit
+            Pageable pageable
     );
 
     @Query("SELECT m.createdAt FROM Message m WHERE m.id = :id")

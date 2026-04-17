@@ -47,14 +47,14 @@ public class ConversationController {
     }
 
     @PatchMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN') or @conversationService.isOwner(#id)")
+    @PreAuthorize("hasRole('ADMIN') or @conversationService.isOwner(?#id)")
     public ResponseEntity<ApiResponse<UpdateConversationDTO>> updateConversation(
             @PathVariable("id") Long id,
             @Valid @RequestBody UpdateConversationDTO updateConversationDTO) {
         return ResponseEntity.ok(conversationService.updateConversation(id, updateConversationDTO));
     }
     @PostMapping("/{id}/participants")
-    @PreAuthorize("hasRole('ADMIN') or @conversationService.isOwner(#id)")
+    @PreAuthorize("hasRole('ADMIN') or @conversationService.isOwner(?#id)")
     public ResponseEntity<ApiResponse<AddParticipantsResponseDTO>> addParticipantToConversation(
             @PathVariable("id") Long id,
             @Valid @RequestBody AddParticipantsRequestDTO addParticipantsRequestDTO) {
@@ -62,7 +62,7 @@ public class ConversationController {
     }
 
     @DeleteMapping("/{id}/participants/{userId}")
-    @PreAuthorize("hasRole('ADMIN') or @conversationService.isOwner(#id) or #userId == principal.id")
+    @PreAuthorize("hasRole('ADMIN') or @conversationService.isOwner(?#id) or #userId == principal.id")
     public ResponseEntity<ApiResponse<Void>> removeParticipant(
             @PathVariable("id") Long id,
             @PathVariable("userId") Long userId) {

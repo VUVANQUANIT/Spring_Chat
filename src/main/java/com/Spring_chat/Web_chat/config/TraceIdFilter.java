@@ -11,7 +11,6 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.UUID;
-import java.util.regex.Pattern;
 
 @Component
 @Order(1)
@@ -19,8 +18,6 @@ public class TraceIdFilter extends OncePerRequestFilter {
 
     private static final String TRACE_ID_HEADER = "X-Trace-Id";
     private static final String MDC_KEY = "traceId";
-
-    private static final Pattern SAFE_TRACE_ID = Pattern.compile("^[a-zA-Z0-9\\-]{1,64}$");
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -37,9 +34,20 @@ public class TraceIdFilter extends OncePerRequestFilter {
     }
 
     private String sanitizeTraceId(String raw) {
-        if (raw != null && SAFE_TRACE_ID.matcher(raw).matches()) {
-            return raw;
+        if (raw == null || raw.isEmpty() || raw.length() > 64) {
+            return generateNewTraceId();
         }
+
+        for (int i = 0; i < raw.length(); i++) {
+            char c = raw.charAt(i);
+            if (!Character.isLetterOrDigit(c) && c != '-') {
+                return generateNewTraceId();
+            }
+        }
+        return raw;
+    }
+
+    private String generateNewTraceId() {
         return UUID.randomUUID().toString().replace("-", "").substring(0, 16);
     }
 }

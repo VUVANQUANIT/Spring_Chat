@@ -77,7 +77,7 @@ class MessageRepositoryTest {
 
         // Lấy danh sách tin nhắn
         List<MessageRowProjection> messages = messageRepository.findMessagesByConversation(
-                conversation.getId(), sender.getId(), null, null, 10);
+                conversation.getId(), sender.getId(), null, null, org.springframework.data.domain.PageRequest.of(0, 10));
 
 
         assertThat(messages).hasSize(3);
@@ -103,7 +103,7 @@ class MessageRepositoryTest {
         // Lấy tin nhắn cũ hơn m3 (beforeId = m3.getId())
         Instant beforeCreatedAt = messageRepository.findCreatedAtById(m3.getId());
         List<MessageRowProjection> messages = messageRepository.findMessagesByConversation(
-                conversation.getId(), sender.getId(), beforeCreatedAt, m3.getId(), 2);
+                conversation.getId(), sender.getId(), beforeCreatedAt, m3.getId(), org.springframework.data.domain.PageRequest.of(0, 2));
 
 
         // Tin nhắn trả về phải là m2 và m1, bỏ qua m4 và m3

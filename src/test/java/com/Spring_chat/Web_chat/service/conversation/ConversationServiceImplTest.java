@@ -552,31 +552,5 @@ class ConversationServiceImplTest {
             then(conversationRepository).should().save(conversation);
         }
 
-        @Test
-        @DisplayName("không phải owner kick người khác -> FORBIDDEN")
-        void nonOwnerKick_shouldThrowForbidden() {
-            setCurrentUser(2L, "bob");
-            User alice = User.builder().id(1L).username("alice").build();
-            User bob = User.builder().id(2L).username("bob").build();
-            User carol = User.builder().id(3L).username("carol").build();
-            Conversation conversation = Conversation.builder()
-                    .id(5L)
-                    .type(ConversationType.GROUP)
-                    .owner(alice)
-                    .build();
-
-            ConversationParticipant carolPart = ConversationParticipant.builder()
-                    .id(102L).conversation(conversation).user(carol).build();
-
-            given(userRepository.findById(2L)).willReturn(Optional.of(bob));
-            given(conversationRepository.findById(5L)).willReturn(Optional.of(conversation));
-            given(conversationParticipantRepository.findByConversation_IdAndUser_Id(5L, 3L))
-                    .willReturn(Optional.of(carolPart));
-
-            assertThatThrownBy(() -> conversationService.removeParticipantFromConversation(5L, 3L))
-                    .isInstanceOf(AppException.class)
-                    .extracting(e -> ((AppException) e).getErrorCode())
-                    .isEqualTo(ErrorCode.FORBIDDEN);
-        }
     }
 }

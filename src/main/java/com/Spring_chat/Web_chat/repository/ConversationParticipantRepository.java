@@ -105,4 +105,6 @@ public interface ConversationParticipantRepository extends JpaRepository<Convers
     java.util.Optional<ConversationParticipant> findFirstByConversation_IdAndLeftAtIsNullOrderByJoinedAtAsc(Long conversationId);
 
     java.util.Optional<ConversationParticipant> findFirstByConversation_IdAndUser_IdNotAndLeftAtIsNullOrderByJoinedAtAsc(Long conversationId, Long userId);
+
+    boolean existsByConversation_IdAndUser_IdNotAndLeftAtIsNull(Long conversationId, Long userId);
 }

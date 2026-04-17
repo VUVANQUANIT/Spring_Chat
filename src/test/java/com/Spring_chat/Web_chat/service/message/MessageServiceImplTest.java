@@ -94,7 +94,7 @@ class MessageServiceImplTest {
                 mockRows.add(row);
             }
 
-            given(messageRepository.findMessagesByConversation(conversationId, currentUser.getId(), null, beforeId, requestedLimit + 1))
+            given(messageRepository.findMessagesByConversation(conversationId, currentUser.getId(), null, beforeId, org.springframework.data.domain.PageRequest.of(0, requestedLimit + 1)))
                     .willReturn(mockRows);
             given(messageDeliveryStatusRepo.findAllByMessage_IdIn(org.mockito.ArgumentMatchers.anyList()))
                     .willReturn(new ArrayList<>());
@@ -147,7 +147,7 @@ class MessageServiceImplTest {
             }
 
 
-            given(messageRepository.findMessagesByConversation(conversationId, currentUser.getId(), beforeCreatedAt, beforeId, requestedLimit + 1))
+            given(messageRepository.findMessagesByConversation(conversationId, currentUser.getId(), beforeCreatedAt, beforeId, org.springframework.data.domain.PageRequest.of(0, requestedLimit + 1)))
                     .willReturn(mockRows);
             given(messageDeliveryStatusRepo.findAllByMessage_IdIn(org.mockito.ArgumentMatchers.anyList()))
                     .willReturn(new ArrayList<>());
@@ -186,7 +186,7 @@ class MessageServiceImplTest {
             List<MessageRowProjection> mockRows = new ArrayList<>();
             mockRows.add(row);
 
-            given(messageRepository.findMessagesByConversation(anyLong(), anyLong(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), anyInt()))
+            given(messageRepository.findMessagesByConversation(anyLong(), anyLong(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(org.springframework.data.domain.Pageable.class)))
                     .willReturn(mockRows);
             given(messageDeliveryStatusRepo.findAllByMessage_IdIn(org.mockito.ArgumentMatchers.anyList()))
                     .willReturn(new ArrayList<>());
@@ -230,7 +230,7 @@ class MessageServiceImplTest {
             given(currentUserProvider.findCurrentUserOrThrow()).willReturn(currentUser);
             given(conversationParticipantRepository.existsByConversation_IdAndUser_Id(conversationId, currentUser.getId()))
                     .willReturn(true);
-            given(messageRepository.findMessagesByConversation(anyLong(), anyLong(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), anyInt()))
+            given(messageRepository.findMessagesByConversation(anyLong(), anyLong(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(org.springframework.data.domain.Pageable.class)))
                     .willReturn(new ArrayList<>());
             given(messageDeliveryStatusRepo.findAllByMessage_IdIn(org.mockito.ArgumentMatchers.anyList()))
                     .willReturn(new ArrayList<>());
@@ -240,7 +240,7 @@ class MessageServiceImplTest {
 
             // Then
             // Verify that the repository is called with 100 + 1 instead of 150 + 1
-            verify(messageRepository).findMessagesByConversation(conversationId, currentUser.getId(), null, beforeId, 101);
+            verify(messageRepository).findMessagesByConversation(conversationId, currentUser.getId(), null, beforeId, org.springframework.data.domain.PageRequest.of(0, 101));
         }
 
     }

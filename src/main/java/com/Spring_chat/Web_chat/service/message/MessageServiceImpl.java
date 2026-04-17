@@ -16,6 +16,7 @@ import com.Spring_chat.Web_chat.repository.MessageRepository;
 import com.Spring_chat.Web_chat.service.common.CurrentUserProvider;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,6 +25,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 @RequiredArgsConstructor
@@ -34,6 +36,11 @@ public class MessageServiceImpl implements MessageService {
     private final ConversationParticipantRepository conversationParticipantRepository;
     private final MessageDeliveryStatusRepo messageDeliveryStatusRepo;
     private final CurrentUserProvider currentUserProvider;
+
+    // Simple cache to avoid redundant existsBy... queries (optimization)
+    // Key: userId:conversationId, Value: last checked timestamp
+    private final Map<String, Instant> participantCache = new ConcurrentHashMap<>();
+    private static final long CACHE_TTL_SECONDS = 60;
 
     @Override
     @Transactional(readOnly = true)
@@ -55,9 +62,9 @@ public class MessageServiceImpl implements MessageService {
             }
         }
 
-        // Fetch queryLimit + 1 to know if there's a next page
+        // Fetch queryLimit + 1 to know if there's a next page using PageRequest
         List<MessageRowProjection> rows = messageRepository.findMessagesByConversation(
-                conversationId, userId, beforeCreatedAt, beforeId, queryLimit + 1);
+                conversationId, userId, beforeCreatedAt, beforeId, PageRequest.of(0, queryLimit + 1));
 
         boolean hasMore = rows.size() > queryLimit;
         if (hasMore) {
@@ -98,12 +105,21 @@ public class MessageServiceImpl implements MessageService {
 
 
     private void validateParticipant(Long conversationId, Long userId) {
+        String cacheKey = userId + ":" + conversationId;
+        Instant lastChecked = participantCache.get(cacheKey);
+        
+        if (lastChecked != null && lastChecked.isAfter(Instant.now().minusSeconds(CACHE_TTL_SECONDS))) {
+            return; // Cache hit and valid
+        }
+
         boolean isParticipant = conversationParticipantRepository
                 .existsByConversation_IdAndUser_Id(conversationId, userId);
         if (!isParticipant) {
             log.warn("User {} attempted to read conversation {} without being a participant", userId, conversationId);
             throw new AppException(ErrorCode.FORBIDDEN, "Bạn không phải là thành viên của cuộc hội thoại này");
         }
+        
+        participantCache.put(cacheKey, Instant.now());
     }
 
     private int normalizeLimit(Integer requestedLimit) {

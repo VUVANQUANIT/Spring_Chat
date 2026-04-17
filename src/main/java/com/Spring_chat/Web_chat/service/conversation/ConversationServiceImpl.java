@@ -185,6 +185,7 @@ public class ConversationServiceImpl implements ConversationService {
 
     @Override
     public boolean isOwner(Long conversationId) {
+        if (conversationId == null) return false;
         User currentUser = currentUserProvider.findCurrentUserOrThrow();
         return conversationRepository.findById(conversationId)
                 .map(Conversation::getOwner)
@@ -295,10 +296,21 @@ public class ConversationServiceImpl implements ConversationService {
             conversation.setOwner(nextOwnerParticipant.get().getUser());
             conversationRepository.save(conversation);
         } else {
-            // Không còn ai trong nhóm -> Xóa owner và set status INACTIVE
-            conversation.setOwner(null);
-            conversation.setStatus(ConversationStatus.INACTIVE);
-            conversationRepository.save(conversation);
+            // Kiểm tra tuyệt đối xem còn bất kỳ active participant nào khác không để tránh lock nhầm
+            // findFirstBy... ở trên thực tế đã là check rồi, nhưng thêm bước này để chắc chắn theo feedback
+            boolean hasOtherActiveMembers = conversationParticipantRepository
+                    .existsByConversation_IdAndUser_IdNotAndLeftAtIsNull(conversation.getId(), leavingOwnerId);
+
+            if (!hasOtherActiveMembers) {
+                // Không còn ai trong nhóm -> Xóa owner và set status INACTIVE
+                conversation.setOwner(null);
+                conversation.setStatus(ConversationStatus.INACTIVE);
+                conversationRepository.save(conversation);
+            } else {
+                // Trường hợp hy hữu: findFirst không ra nhưng exists lại có (có thể do race condition hoặc lỗi query)
+                // Log cảnh báo và không set INACTIVE
+                log.warn("Potential race condition in transferOwnership for conversation {}. findFirst was empty but exists returned true.", conversation.getId());
+            }
         }
     }
 
