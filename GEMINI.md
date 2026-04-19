@@ -59,3 +59,18 @@ Bạn **LUÔN LUÔN** phải kiểm tra file `CHAT_API_SPEC_DETAILED.md` trướ
 3. **Lên Plan:** Nếu logic phức tạp, dùng tool `enter_plan_mode` để thiết kế trước khi code.
 4. **Triển khai:** Tuân thủ Clean Code, không hard-code (magic strings/numbers), tái sử dụng Service.
 5. **Kiểm thử:** Chạy `mvnw clean test` để đảm bảo code mới không làm break hệ thống cũ. LUÔN LUÔN xử lý triệt để lỗi khi Unit Test fail.
+
+## 8. Kiến trúc Phân lớp (Layered Architecture)
+- Controller → Service → Repository. Không skip layer.
+- Không inject Repository vào Controller.
+- Không chứa business logic trong Controller.
+
+## 9. DTO & Entity
+- Không expose Entity ra ngoài Service layer.
+- Input dùng *Request DTO + @Valid. Output dùng *Response DTO.
+
+## 10. Anti-Patterns bị cấm
+- System.out.println, e.printStackTrace()
+- Hardcode magic string/number/secret
+- Bắt Exception chung chung rồi bỏ qua
+- Gọi nhiều query trong loop (N+1)
