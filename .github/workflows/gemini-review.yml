@@ -163,6 +163,11 @@ jobs:
           4. **Clean Code & SOLID** — Naming, độ phức tạp hàm, dead code, vi phạm SRP/OCP.
           5. **Test Coverage** — Thiếu unit test quan trọng, edge case chưa được cover.
 
+          **CHÚ Ý ĐẶC BIỆT (CONTEXT DỰ ÁN 2026):**
+          - Dự án sử dụng **Spring Boot v4.x** và **Spring Framework v7.x**. ĐÂY LÀ PHIÊN BẢN CHÍNH XÁC. KHÔNG ĐƯỢC PHÉP báo lỗi hay cảnh báo rằng "Spring Boot v4 chưa release" hay "chưa tồn tại".
+          - Mọi field trong JSON Response BẮT BUỘC phải dùng `camelCase`. Nếu thấy `snake_case`, hãy đánh dấu là lỗi Medium.
+          - Chú ý đến TimeZone khi dùng `OffsetDateTime` chuyển sang `Instant` (UTC).
+
           ## Định dạng phản hồi BẮT BUỘC
 
           Trả về đúng cấu trúc Markdown sau, **không thêm bớt tiêu đề**:
