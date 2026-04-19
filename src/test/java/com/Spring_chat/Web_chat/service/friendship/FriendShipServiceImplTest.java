@@ -90,8 +90,8 @@ class FriendShipServiceImplTest {
 
         // When & Then
         AppException exception = assertThrows(AppException.class, () -> friendShipService.rejectFriendShip(100L));
-        assertEquals(ErrorCode.BUSINESS_RULE_VIOLATED, exception.getErrorCode());
-        assertTrue(exception.getMessage().contains("Người nhận phải là mới có thể từ chối"));
+        assertEquals(ErrorCode.FORBIDDEN, exception.getErrorCode());
+        assertTrue(exception.getMessage().contains("Bạn không có quyền từ chối lời mời này"));
     }
 
     @Test
@@ -105,6 +105,6 @@ class FriendShipServiceImplTest {
         // When & Then
         AppException exception = assertThrows(AppException.class, () -> friendShipService.rejectFriendShip(100L));
         assertEquals(ErrorCode.BUSINESS_RULE_VIOLATED, exception.getErrorCode());
-        assertTrue(exception.getMessage().contains("Trạng thái lời mời phải là Pending"));
+        assertTrue(exception.getMessage().contains("PENDING"));
     }
 }

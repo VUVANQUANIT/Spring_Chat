@@ -134,13 +134,23 @@ public class ConversationServiceImpl implements ConversationService {
     }
 
     @Override
-    public ApiResponse<ConversationListDTO> getUserConversation(Pageable pageable, String cursor) {
+    public ApiResponse<ConversationListDTO> getUserConversation(Pageable pageable, String cursorStr) {
         User currentUser = currentUserProvider.findCurrentUserOrThrow();
 
         int limit = Math.min(pageable.getPageSize(), 50);
+        Instant onlineThreshold = Instant.now().minus(5, java.time.temporal.ChronoUnit.MINUTES);
+
+        Instant cursor = null;
+        if (cursorStr != null && !cursorStr.isBlank()) {
+            try {
+                cursor = Instant.parse(cursorStr);
+            } catch (Exception e) {
+                log.warn("Invalid cursor format: {}", cursorStr);
+            }
+        }
 
         List<ConversationRowProjection> rows = conversationParticipantRepository
-                .findUserConversations(currentUser.getId(), cursor, limit + 1);
+                .findUserConversations(currentUser.getId(), cursor, limit + 1, onlineThreshold);
 
         boolean hasMore = rows.size() > limit;
         List<ConversationRowProjection> page = hasMore ? rows.subList(0, limit) : rows;
@@ -153,8 +163,8 @@ public class ConversationServiceImpl implements ConversationService {
         if (hasMore && !page.isEmpty()) {
             ConversationRowProjection last = page.get(page.size() - 1);
             nextCursor = last.getLastMessageCreatedAt() != null
-                    ? last.getLastMessageCreatedAt()
-                    : last.getConversationCreatedAt();
+                    ? last.getLastMessageCreatedAt().toInstant()
+                    : (last.getConversationCreatedAt() != null ? last.getConversationCreatedAt().toInstant() : null);
         }
 
         ConversationListDTO result = new ConversationListDTO();
@@ -352,7 +362,7 @@ public class ConversationServiceImpl implements ConversationService {
         dto.setType(ConversationType.valueOf(row.getType()));
         dto.setTitle(row.getTitle());
         dto.setAvatarUrl(row.getAvatarUrl());
-        dto.setCreatedAt(row.getConversationCreatedAt());
+        dto.setCreatedAt(row.getConversationCreatedAt() != null ? row.getConversationCreatedAt().toInstant() : null);
 
         if (row.getLastMessageId() != null) {
             LastMessageDTO lastMsg = new LastMessageDTO();
@@ -362,7 +372,7 @@ public class ConversationServiceImpl implements ConversationService {
                     ? MessageType.valueOf(row.getLastMessageType()) : null);
             lastMsg.setSenderId(row.getLastMessageSenderId());
             lastMsg.setSenderUsername(row.getSenderUsername());
-            lastMsg.setCreatedAt(row.getLastMessageCreatedAt());
+            lastMsg.setCreatedAt(row.getLastMessageCreatedAt() != null ? row.getLastMessageCreatedAt().toInstant() : null);
             lastMsg.setDeleted(Boolean.TRUE.equals(row.getLastMessageIsDeleted()));
             dto.setLastMessage(lastMsg);
         }
