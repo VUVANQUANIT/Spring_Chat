@@ -58,6 +58,8 @@ jobs:
       - name: Get PR diff and changed file list
         id: get_diff
         run: |
+          git fetch origin ${{ github.base_ref }}
+          git fetch origin ${{ github.head_ref }}
           git diff origin/${{ github.base_ref }}...origin/${{ github.head_ref }} > pr_diff.txt
           git diff --name-only origin/${{ github.base_ref }}...origin/${{ github.head_ref }} > changed_files.txt
           echo "diff_bytes=$(wc -c < pr_diff.txt)" >> $GITHUB_OUTPUT
