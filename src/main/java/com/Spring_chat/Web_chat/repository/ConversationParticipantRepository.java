@@ -63,7 +63,7 @@ public interface ConversationParticipantRepository extends JpaRepository<Convers
                 CASE WHEN c.type = 'PRIVATE' THEN u2.username    ELSE NULL END AS "otherUsername",
                 CASE WHEN c.type = 'PRIVATE' THEN u2.avatar_url  ELSE NULL END AS "otherAvatarUrl",
                 CASE
-                    WHEN c.type = 'PRIVATE' AND u2.last_seen > NOW() - INTERVAL '5 minutes' THEN TRUE
+                    WHEN c.type = 'PRIVATE' AND u2.last_seen > :onlineThreshold THEN TRUE
                     WHEN c.type = 'PRIVATE' THEN FALSE
                     ELSE NULL
                 END                                                     AS "isOnline"
@@ -87,17 +87,18 @@ public interface ConversationParticipantRepository extends JpaRepository<Convers
             LEFT JOIN users u2  ON u2.id = cp2.user_id
             WHERE cp.user_id = :userId
               AND (
-                      CAST(:cursor AS timestamptz) IS NULL
-                      OR COALESCE(m.created_at, c.created_at) < CAST(:cursor AS timestamptz)
+                      :cursor IS NULL
+                      OR COALESCE(m.created_at, c.created_at) < :cursor
                   )
             ORDER BY COALESCE(m.created_at, c.created_at) DESC, c.id DESC
             LIMIT :limit
             """, nativeQuery = true)
-    List<ConversationRowProjection> findUserConversations(
+            List<ConversationRowProjection> findUserConversations(
             @Param("userId") Long   userId,
-            @Param("cursor") String cursor,
-            @Param("limit")  int    limit
-    );
+            @Param("cursor") java.time.Instant cursor,
+            @Param("limit")  int    limit,
+            @Param("onlineThreshold") java.time.Instant onlineThreshold
+            );
 
     ConversationParticipant findByConversation_IdAndUser(Long conversationId, User user);
     java.util.Optional<ConversationParticipant> findByConversation_IdAndUser_Id(Long conversationId, Long userId);
