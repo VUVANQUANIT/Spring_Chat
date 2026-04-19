@@ -14,9 +14,6 @@ import com.Spring_chat.Web_chat.mappers.FriendShipMapper;
 import com.Spring_chat.Web_chat.repository.FriendshipRepository;
 import com.Spring_chat.Web_chat.repository.UserRepository;
 import com.Spring_chat.Web_chat.service.common.CurrentUserProvider;
-import com.Spring_chat.Web_chat.dto.conversations.CreateConversationsDTO;
-import com.Spring_chat.Web_chat.enums.ConversationType;
-import com.Spring_chat.Web_chat.service.conversation.ConversationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -25,7 +22,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.List;
 
 @Slf4j
 @Service
@@ -35,43 +31,43 @@ public class FriendShipServiceImpl implements FriendShipService {
     private final UserRepository userRepository;
     private final CurrentUserProvider currentUserProvider;
     private final FriendShipMapper friendShipMapper;
-    private final ConversationService conversationService;
 
     @Override
     @Transactional
-    public ApiResponse<FriendRequestResponseDTO> sendRequestFriend(FriendRequestCreateRequestDTO dto) {
-        User requester = currentUserProvider.findCurrentUserOrThrow();
-        User addressee = currentUserProvider.findUserOrThrow(dto.getAddresseeId());
+    public ApiResponse<FriendRequestResponseDTO> sendRequestFriend(FriendRequestCreateRequestDTO friendRequestCreateRequestDTO) {
+        User user = currentUserProvider.findCurrentUserOrThrow();
+        User user1 = currentUserProvider.findUserOrThrow(friendRequestCreateRequestDTO.getAddresseeId());
 
-        if (requester.getId().equals(addressee.getId())) {
+        if (user.getId().equals(user1.getId())) {
             throw new AppException(ErrorCode.BUSINESS_RULE_VIOLATED, "Không thể gửi lời mời cho chính mình");
         }
+        if (userRepository.existsByIdAndStatus(user1.getId(), UserStatus.BANNED)
+                || userRepository.existsByIdAndStatus(user1.getId(), UserStatus.BLOCKED)) {
+            throw new AppException(ErrorCode.RESOURCE_NOT_FOUND, "Người dùng đang bị khoá không thể nhận lời mời kết bạn");
+        }
 
-        // Spec 3.1: Nếu bị BLOCKED -> trả 404 (ẩn thông tin)
-        friendshipRepository.findBetweenUsers(requester.getId(), addressee.getId())
-                .ifPresent(f -> {
-                    if (f.getStatus() == FriendshipStatus.BLOCKED) {
-                        // Nếu addressee block requester -> trả 404
-                        if (f.getRequester().getId().equals(addressee.getId())) {
-                            throw new AppException(ErrorCode.RESOURCE_NOT_FOUND, "Người dùng không tồn tại");
-                        }
-                        // Nếu mình đã block họ -> trả Forbidden hoặc Conflict tùy design, ở đây báo lỗi rõ ràng
-                        throw new AppException(ErrorCode.BUSINESS_RULE_VIOLATED, "Bạn đã chặn người dùng này");
-                    }
-                    if (f.getStatus() == FriendshipStatus.ACCEPTED) {
-                        throw new AppException(ErrorCode.HAS_FRIEND, "Đã là bạn bè");
-                    }
-                    if (f.getStatus() == FriendshipStatus.PENDING) {
-                        throw new AppException(ErrorCode.FRIENDSHIP_REQUEST_EXISTS, "Đã có lời mời đang chờ xử lý");
-                    }
-                });
+        boolean hasPending = friendshipRepository.existsByRequester_IdAndAddressee_IdAndStatus(
+                user.getId(), user1.getId(), FriendshipStatus.PENDING
+        ) || friendshipRepository.existsByRequester_IdAndAddressee_IdAndStatus(
+                user1.getId(), user.getId(), FriendshipStatus.PENDING
+        );
+        boolean hasFriend = friendshipRepository.existsByRequester_IdAndAddressee_IdAndStatus(
+                user.getId(), user1.getId(), FriendshipStatus.ACCEPTED
+        ) || friendshipRepository.existsByRequester_IdAndAddressee_IdAndStatus(
+                user1.getId(), user.getId(), FriendshipStatus.ACCEPTED
+        );
 
-        Friendship friendship = Friendship.builder()
-                .requester(requester)
-                .addressee(addressee)
-                .status(FriendshipStatus.PENDING)
-                .build();
-        
+        if (hasPending) {
+            throw new AppException(ErrorCode.FRIENDSHIP_REQUEST_EXISTS, "Đã gửi lời mời kết bạn trước đó rồi");
+        }
+        if (hasFriend) {
+            throw new AppException(ErrorCode.HAS_FRIEND, "Đã là bạn bè");
+        }
+
+        Friendship friendship = new Friendship();
+        friendship.setRequester(user);
+        friendship.setAddressee(user1);
+        friendship.setStatus(FriendshipStatus.PENDING);
         friendshipRepository.save(friendship);
 
         return ApiResponse.ok("Friend request sent", friendShipMapper.toFriendRequestResponseDTO(friendship));
@@ -85,61 +81,57 @@ public class FriendShipServiceImpl implements FriendShipService {
             int size) {
 
         User user = currentUserProvider.findCurrentUserOrThrow();
+
+        // RECEIVED = mình là addressee; SENT = mình là requester
         boolean received = (direction == FriendDirection.RECEIVED);
 
         Page<FriendResponseDTO> resultPage = friendshipRepository.findRequests(
                 user.getId(),
                 received,
-                status,
+                status,                     // null → không lọc status
                 PageRequest.of(page, size)
         );
 
-        return ApiResponse.ok("OK", PageResponse.of(resultPage.getContent(), resultPage));
+        PageResponse<FriendResponseDTO> pageResponse = PageResponse.of(resultPage.getContent(), resultPage);
+        return ApiResponse.ok("OK", pageResponse);
     }
 
     @Override
     @Transactional
     public ApiResponse<AcceptFriendResponseDTO> acceptFriend(Long id) {
-        User currentUser = currentUserProvider.findCurrentUserOrThrow();
-        Friendship friendship = requirePendingAddressee(id, currentUser, "Bạn không có quyền chấp nhận lời mời này");
-        
+        User user = currentUserProvider.findCurrentUserOrThrow();
+        Friendship friendship = requirePendingAddressee(
+                id,
+                user,
+                "Người nhận phải là mới có thể chấp nhận lời mời"
+        );
         updateStatus(friendship, FriendshipStatus.ACCEPTED);
-
-        // Spec 3.3: Sau khi accept, tự động tạo/lấy Conversation PRIVATE
-        createPrivateConversation(friendship.getRequester(), friendship.getAddressee());
 
         AcceptFriendResponseDTO responseDTO = new AcceptFriendResponseDTO();
         responseDTO.setId(friendship.getId());
         responseDTO.setStatus(FriendshipStatus.ACCEPTED);
         responseDTO.setUpdatedAt(friendship.getUpdatedAt());
+        log.info("AcceptFriendResponseDTO {}", responseDTO);
 
-        return ApiResponse.ok("Friend request accepted", responseDTO);
+        ApiResponse<AcceptFriendResponseDTO> response = new ApiResponse<>();
+        return response.ok("Friend request accepted", responseDTO);
     }
-
-    private void createPrivateConversation(User u1, User u2) {
-        try {
-            CreateConversationsDTO createDTO = new CreateConversationsDTO();
-            createDTO.setType(ConversationType.PRIVATE);
-            createDTO.setParticipantIds(new Long[]{u1.getId()}); // ConversationService.createConversation adds current user
-            conversationService.createConversation(createDTO);
-        } catch (Exception e) {
-            log.error("Failed to auto-create conversation between {} and {}: {}", u1.getId(), u2.getId(), e.getMessage());
-        }
-    }
-
     @Override
     @Transactional
-    public ApiResponse<RejectFriendResponseDTO> rejectFriendShip(Long id) {
-        User currentUser = currentUserProvider.findCurrentUserOrThrow();
-        Friendship friendship = requirePendingAddressee(id, currentUser, "Bạn không có quyền từ chối lời mời này");
-        
+    public ApiResponse<RejectFriendResponseDTO> rejectFriendShip(Long id){
+        User user = currentUserProvider.findCurrentUserOrThrow();
+        Friendship friendship = requirePendingAddressee(
+                id,
+                user,
+                "Người nhận phải là mới có thể từ chối lời mời"
+        );
         updateStatus(friendship, FriendshipStatus.REJECTED);
-        
         RejectFriendResponseDTO responseDTO = new RejectFriendResponseDTO();
         responseDTO.setId(friendship.getId());
         responseDTO.setUpdatedAt(friendship.getUpdatedAt());
-        
-        return ApiResponse.ok("Friend request rejected", responseDTO);
+        log.info("RejectFriendResponseDTO {}", responseDTO);
+        ApiResponse<RejectFriendResponseDTO> response = new ApiResponse<>();
+        return response.ok("Friend request rejected", responseDTO);
     }
 
     @Override
@@ -152,9 +144,11 @@ public class FriendShipServiceImpl implements FriendShipService {
             throw new AppException(ErrorCode.CANNOT_BLOCK_SELF, "Không thể tự block chính mình");
         }
 
-        Friendship friendship = friendshipRepository.findBetweenUsers(blocker.getId(), target.getId())
+
+        Friendship friendship = friendshipRepository
+                .findBetweenUsers(blocker.getId(), target.getId())
                 .map(existing -> {
-                    existing.setRequester(blocker); // Mark current user as the one who initiated block
+                    existing.setRequester(blocker);
                     existing.setAddressee(target);
                     existing.setStatus(FriendshipStatus.BLOCKED);
                     return existing;
@@ -176,30 +170,34 @@ public class FriendShipServiceImpl implements FriendShipService {
 
     @Override
     @Transactional
-    public ApiResponse<String> deleteFriendship(Long targetUserId) {
+    public ApiResponse<String> deleteFriendship(Long id) {
         User currentUser = currentUserProvider.findCurrentUserOrThrow();
-        
-        Friendship friendship = friendshipRepository.findBetweenUsers(currentUser.getId(), targetUserId)
-                .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND, "Không tìm thấy quan hệ bạn bè"));
-
-        if (friendship.getStatus() != FriendshipStatus.ACCEPTED) {
-            throw new AppException(ErrorCode.BUSINESS_RULE_VIOLATED, "Hai người chưa phải là bạn bè");
+        User target = currentUserProvider.findUserOrThrow(id);
+        if (target.getId().equals(currentUser.getId())) {
+            throw new AppException(ErrorCode.CANNOT_DELETE_SELF,"Không thể tự xoá chính mình");
         }
+        Friendship friendship = friendshipRepository
+                .findBetweenUsers(currentUser.getId(),target.getId()).orElseThrow(
+                        () -> new   AppException(ErrorCode.RESOURCE_NOT_FOUND,"Bạn chưa phải bạn bẻ")
+                );
+
 
         friendshipRepository.delete(friendship);
         return ApiResponse.ok("Friendship deleted", null);
     }
 
-    private Friendship requirePendingAddressee(Long id, User user, String errorMessage) {
-        Friendship friendship = friendshipRepository.findById(id)
-                .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND, "Lời mời kết bạn không tồn tại"));
 
-        if (friendship.getStatus() != FriendshipStatus.PENDING) {
-            throw new AppException(ErrorCode.BUSINESS_RULE_VIOLATED, "Trạng thái lời mời không hợp lệ (phải là PENDING)");
+    private Friendship requirePendingAddressee(Long id, User user, String notAddresseeMessage) {
+        Friendship friendship = friendshipRepository.findById(id).orElseThrow(
+                () -> new AppException(ErrorCode.RESOURCE_NOT_FOUND, " Friendship ID không tồn tại")
+        );
+        log.info("Search ID Friendship: {}", friendship.getId());
+        if (!friendship.getStatus().equals(FriendshipStatus.PENDING)) {
+            throw new AppException(ErrorCode.BUSINESS_RULE_VIOLATED, "Trạng thái lời mời phải là Pending");
         }
-
+        log.info("Status Friendship id {} : {}", friendship.getId(), friendship.getStatus());
         if (!friendship.getAddressee().getId().equals(user.getId())) {
-            throw new AppException(ErrorCode.FORBIDDEN, errorMessage);
+            throw new AppException(ErrorCode.BUSINESS_RULE_VIOLATED, notAddresseeMessage);
         }
         return friendship;
     }
@@ -208,5 +206,6 @@ public class FriendShipServiceImpl implements FriendShipService {
         friendship.setStatus(status);
         friendship.setUpdatedAt(Instant.now());
         friendshipRepository.save(friendship);
+        log.info("Status Friendship id {} : {}", friendship.getId(), friendship.getStatus());
     }
 }

@@ -13,14 +13,14 @@ public interface ConversationRowProjection {
     String  getType();
     String  getTitle();
     String  getAvatarUrl();
-    java.time.OffsetDateTime getConversationCreatedAt();
+    Instant getConversationCreatedAt();
 
     Long    getLastMessageId();
     String  getLastMessageContent();
     String  getLastMessageType();
     Long    getLastMessageSenderId();
     String  getSenderUsername();
-    java.time.OffsetDateTime getLastMessageCreatedAt();
+    Instant getLastMessageCreatedAt();
     Boolean getLastMessageIsDeleted();
 
     Long    getUnreadCount();
