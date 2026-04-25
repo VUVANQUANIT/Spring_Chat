@@ -11,6 +11,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 
 @Repository
@@ -43,4 +44,13 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
 
     @Query("SELECT m.createdAt FROM Message m WHERE m.id = :id")
     Instant findCreatedAtById(@Param("id") Long id);
+
+    Optional<Message> findFirstByConversation_IdAndSender_IdAndClientMessageIdAndCreatedAtGreaterThanEqualOrderByCreatedAtDesc(
+            Long conversationId,
+            Long senderId,
+            String clientMessageId,
+            Instant threshold
+    );
+
+    Optional<Message> findByIdAndConversation_Id(Long id, Long conversationId);
 }

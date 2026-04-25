@@ -2,6 +2,9 @@ package com.Spring_chat.Web_chat.controller.message;
 
 import com.Spring_chat.Web_chat.dto.ApiResponse;
 import com.Spring_chat.Web_chat.dto.message.MessageListResponseDTO;
+import com.Spring_chat.Web_chat.dto.message.SendMessageRequestDTO;
+import com.Spring_chat.Web_chat.dto.message.SendMessageResponseDTO;
+import jakarta.validation.Valid;
 import com.Spring_chat.Web_chat.service.message.MessageService;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -33,6 +36,14 @@ public class MessageController {
             @RequestParam(defaultValue = "30", required = false) @Min(1) @Max(100) Integer limit) {
         
         return ResponseEntity.ok(messageService.getMessageList(beforeId, limit, id));
+    }
+
+    @PostMapping("/{id}/messages")
+    public ResponseEntity<ApiResponse<SendMessageResponseDTO>> sendMessage(
+            @PathVariable("id") Long id,
+            @Valid @RequestBody SendMessageRequestDTO request
+    ) {
+        return ResponseEntity.status(201).body(messageService.sendMessage(id, request));
     }
 }
 

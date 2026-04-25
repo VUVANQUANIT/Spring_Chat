@@ -5,30 +5,42 @@ import com.Spring_chat.Web_chat.dto.message.DeliveryStatusesDTO;
 import com.Spring_chat.Web_chat.dto.message.MessageListResponseDTO;
 import com.Spring_chat.Web_chat.dto.message.MessageRowProjection;
 import com.Spring_chat.Web_chat.dto.message.MessageSummaryDTO;
+import com.Spring_chat.Web_chat.dto.message.SendMessageRequestDTO;
+import com.Spring_chat.Web_chat.dto.message.SendMessageResponseDTO;
 import com.Spring_chat.Web_chat.dto.message.SenderDTO;
+import com.Spring_chat.Web_chat.entity.Conversation;
+import com.Spring_chat.Web_chat.entity.ConversationParticipant;
+import com.Spring_chat.Web_chat.entity.Message;
 import com.Spring_chat.Web_chat.entity.MessageStatus;
 import com.Spring_chat.Web_chat.entity.User;
+import com.Spring_chat.Web_chat.enums.ConversationStatus;
+import com.Spring_chat.Web_chat.enums.MessageDeliveryStatus;
+import com.Spring_chat.Web_chat.enums.MessageType;
 import com.Spring_chat.Web_chat.exception.AppException;
 import com.Spring_chat.Web_chat.exception.ErrorCode;
 import com.Spring_chat.Web_chat.repository.ConversationParticipantRepository;
+import com.Spring_chat.Web_chat.repository.ConversationRepository;
 import com.Spring_chat.Web_chat.repository.MessageDeliveryStatusRepo;
 import com.Spring_chat.Web_chat.repository.MessageRepository;
 import com.Spring_chat.Web_chat.service.common.CurrentUserProvider;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import java.util.concurrent.TimeUnit;
+import java.time.Duration;
+import java.net.URI;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 @RequiredArgsConstructor
@@ -36,9 +48,14 @@ import java.util.stream.Collectors;
 @Slf4j
 public class MessageServiceImpl implements MessageService {
     private final MessageRepository messageRepository;
+    private final ConversationRepository conversationRepository;
     private final ConversationParticipantRepository conversationParticipantRepository;
     private final MessageDeliveryStatusRepo messageDeliveryStatusRepo;
     private final CurrentUserProvider currentUserProvider;
+    private final StringRedisTemplate stringRedisTemplate;
+
+    private static final Duration IDEMPOTENCY_TTL = Duration.ofSeconds(30);
+    private static final String IDEMPOTENCY_PREFIX = "chat:idempotency:send-message:";
 
     // Simple cache to avoid redundant existsBy... queries (optimization)
     // Key: userId:conversationId, Value: Boolean indicating participant exists
@@ -108,6 +125,84 @@ public class MessageServiceImpl implements MessageService {
         return ApiResponse.ok("OK", response);
     }
 
+    @Override
+    @Transactional
+    public ApiResponse<SendMessageResponseDTO> sendMessage(Long conversationId, SendMessageRequestDTO request) {
+        User currentUser = currentUserProvider.findCurrentUserOrThrow();
+        Long senderId = currentUser.getId();
+
+        Conversation conversation = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND, "Conversation không tồn tại"));
+        if (conversation.getStatus() != ConversationStatus.ACTIVE) {
+            throw new AppException(ErrorCode.BUSINESS_RULE_VIOLATED, "Cuộc hội thoại không còn hoạt động");
+        }
+
+        conversationParticipantRepository
+                .findByConversation_IdAndUser_IdAndLeftAtIsNull(conversationId, senderId)
+                .orElseThrow(() -> new AppException(
+                        ErrorCode.FORBIDDEN,
+                        "Bạn không phải participant hợp lệ hoặc đã rời khỏi cuộc hội thoại"
+                ));
+
+        MessageType messageType = request.getType() == null ? MessageType.TEXT : request.getType();
+        String normalizedContent = normalizeContent(request.getContent());
+        validateMessageContent(messageType, normalizedContent);
+
+        String normalizedClientMessageId = normalizeClientMessageId(request.getClientMessageId());
+        String idempotencyKey = buildIdempotencyKey(conversationId, senderId, normalizedClientMessageId);
+        boolean lockAcquired = true;
+        if (idempotencyKey != null) {
+            lockAcquired = tryAcquireIdempotencyKey(idempotencyKey);
+            if (!lockAcquired) {
+                Message existingMessage = findRecentDuplicate(conversationId, senderId, normalizedClientMessageId);
+                if (existingMessage != null) {
+                    return ApiResponse.created("Message sent", toSendMessageResponse(existingMessage));
+                }
+                throw new AppException(
+                        ErrorCode.BUSINESS_RULE_VIOLATED,
+                        "Yêu cầu gửi tin nhắn đang được xử lý, vui lòng thử lại"
+                );
+            }
+        }
+
+        try {
+            Message replyTo = null;
+            if (request.getReplyToId() != null) {
+                replyTo = messageRepository.findByIdAndConversation_Id(request.getReplyToId(), conversationId)
+                        .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND, "Tin nhắn reply không tồn tại"));
+            }
+
+            Message message = Message.builder()
+                    .conversation(conversation)
+                    .sender(currentUser)
+                    .content(normalizedContent)
+                    .type(messageType)
+                    .replyTo(replyTo)
+                    .clientMessageId(normalizedClientMessageId)
+                    .build();
+            Message savedMessage = messageRepository.save(message);
+
+            List<ConversationParticipant> activeParticipants =
+                    conversationParticipantRepository.findAllByConversation_IdAndLeftAtIsNull(conversationId);
+
+            List<MessageStatus> initialStatuses = activeParticipants.stream()
+                    .map(participant -> MessageStatus.builder()
+                            .message(savedMessage)
+                            .user(participant.getUser())
+                            .status(MessageDeliveryStatus.SENT)
+                            .build())
+                    .toList();
+            messageDeliveryStatusRepo.saveAll(initialStatuses);
+
+            participantCache.put(senderId + ":" + conversationId, true);
+            persistIdempotencyResult(idempotencyKey, savedMessage.getId());
+            return ApiResponse.created("Message sent", toSendMessageResponse(savedMessage));
+        } catch (RuntimeException ex) {
+            releaseIdempotencyKey(idempotencyKey);
+            throw ex;
+        }
+    }
+
 
     private void validateParticipant(Long conversationId, Long userId) {
         String cacheKey = userId + ":" + conversationId;
@@ -130,6 +225,109 @@ public class MessageServiceImpl implements MessageService {
     private int normalizeLimit(Integer requestedLimit) {
         int effectiveLimit = (requestedLimit != null && requestedLimit > 0) ? requestedLimit : 30;
         return Math.min(effectiveLimit, 100);
+    }
+
+    private String normalizeClientMessageId(String clientMessageId) {
+        if (clientMessageId == null) {
+            return null;
+        }
+        String trimmed = clientMessageId.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        return trimmed;
+    }
+
+    private String buildIdempotencyKey(Long conversationId, Long senderId, String clientMessageId) {
+        if (clientMessageId == null) {
+            return null;
+        }
+        return IDEMPOTENCY_PREFIX + conversationId + ":" + senderId + ":" + clientMessageId;
+    }
+
+    private boolean tryAcquireIdempotencyKey(String idempotencyKey) {
+        ValueOperations<String, String> valueOps = stringRedisTemplate.opsForValue();
+        Boolean acquired = valueOps.setIfAbsent(idempotencyKey, "PENDING", IDEMPOTENCY_TTL);
+        return Boolean.TRUE.equals(acquired);
+    }
+
+    private void persistIdempotencyResult(String idempotencyKey, Long messageId) {
+        if (idempotencyKey == null || messageId == null) {
+            return;
+        }
+        stringRedisTemplate.opsForValue().set(idempotencyKey, String.valueOf(messageId), IDEMPOTENCY_TTL);
+    }
+
+    private void releaseIdempotencyKey(String idempotencyKey) {
+        if (idempotencyKey == null) {
+            return;
+        }
+        stringRedisTemplate.delete(idempotencyKey);
+    }
+
+    private Message findRecentDuplicate(Long conversationId, Long senderId, String clientMessageId) {
+        return messageRepository
+                .findFirstByConversation_IdAndSender_IdAndClientMessageIdAndCreatedAtGreaterThanEqualOrderByCreatedAtDesc(
+                        conversationId,
+                        senderId,
+                        clientMessageId,
+                        Instant.now().minusSeconds(IDEMPOTENCY_TTL.toSeconds())
+                )
+                .orElse(null);
+    }
+
+    private String normalizeContent(String content) {
+        return content == null ? null : content.trim();
+    }
+
+    private void validateMessageContent(MessageType type, String content) {
+        if (type != MessageType.TEXT && type != MessageType.IMAGE) {
+            throw new AppException(ErrorCode.BUSINESS_RULE_VIOLATED, "Chỉ hỗ trợ gửi TEXT hoặc IMAGE");
+        }
+        if (type == MessageType.TEXT) {
+            if (content == null || content.isBlank()) {
+                throw new AppException(ErrorCode.BUSINESS_RULE_VIOLATED, "Nội dung text không được để trống");
+            }
+            return;
+        }
+        if (!isValidHttpUrl(content)) {
+            throw new AppException(ErrorCode.BUSINESS_RULE_VIOLATED, "Tin nhắn IMAGE phải có URL hợp lệ");
+        }
+    }
+
+    private boolean isValidHttpUrl(String value) {
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+        try {
+            URI uri = URI.create(value);
+            String scheme = uri.getScheme();
+            return ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))
+                    && uri.getHost() != null;
+        } catch (IllegalArgumentException ex) {
+            return false;
+        }
+    }
+
+    private SendMessageResponseDTO toSendMessageResponse(Message message) {
+        SendMessageResponseDTO dto = new SendMessageResponseDTO();
+        dto.setId(message.getId());
+        dto.setConversationId(message.getConversation().getId());
+
+        SenderDTO senderDTO = new SenderDTO();
+        senderDTO.setId(message.getSender().getId());
+        senderDTO.setUsername(message.getSender().getUsername());
+        senderDTO.setAvatarUrl(message.getSender().getAvatarUrl());
+        dto.setSender(senderDTO);
+
+        dto.setContent(Boolean.TRUE.equals(message.getIsDeleted()) ? null : message.getContent());
+        dto.setType(message.getType());
+        dto.setReplyTo(message.getReplyTo() == null ? null : message.getReplyTo().getId());
+        dto.setDeleted(Boolean.TRUE.equals(message.getIsDeleted()));
+        dto.setEdited(Boolean.TRUE.equals(message.getIsEdited()));
+        dto.setCreatedAt(message.getCreatedAt());
+        dto.setClientMessageId(message.getClientMessageId());
+        return dto;
     }
 
     private MessageSummaryDTO toMessageSummary(MessageRowProjection row, List<DeliveryStatusesDTO> deliveryStatuses) {

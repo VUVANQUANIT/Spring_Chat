@@ -48,6 +48,9 @@ public class Message {
     @Column(name = "content", nullable = false)
     private String content;
 
+    @Column(name = "client_message_id", length = 100)
+    private String clientMessageId;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "type", nullable = false, length = 20)
     @Builder.Default

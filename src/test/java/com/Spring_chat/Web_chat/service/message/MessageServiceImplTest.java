@@ -3,12 +3,21 @@ package com.Spring_chat.Web_chat.service.message;
 import com.Spring_chat.Web_chat.dto.ApiResponse;
 import com.Spring_chat.Web_chat.dto.message.MessageListResponseDTO;
 import com.Spring_chat.Web_chat.dto.message.MessageRowProjection;
+import com.Spring_chat.Web_chat.dto.message.SendMessageRequestDTO;
+import com.Spring_chat.Web_chat.dto.message.SendMessageResponseDTO;
+import com.Spring_chat.Web_chat.entity.Conversation;
+import com.Spring_chat.Web_chat.entity.ConversationParticipant;
+import com.Spring_chat.Web_chat.entity.Message;
 import com.Spring_chat.Web_chat.entity.User;
+import com.Spring_chat.Web_chat.enums.ConversationStatus;
+import com.Spring_chat.Web_chat.enums.ConversationType;
 import com.Spring_chat.Web_chat.enums.MessageDeliveryStatus;
 import com.Spring_chat.Web_chat.enums.MessageType;
 import com.Spring_chat.Web_chat.exception.AppException;
 import com.Spring_chat.Web_chat.exception.ErrorCode;
 import com.Spring_chat.Web_chat.repository.ConversationParticipantRepository;
+import com.Spring_chat.Web_chat.repository.ConversationRepository;
+import com.Spring_chat.Web_chat.repository.MessageDeliveryStatusRepo;
 import com.Spring_chat.Web_chat.repository.MessageRepository;
 import com.Spring_chat.Web_chat.service.common.CurrentUserProvider;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,19 +30,24 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
 
 import java.time.Instant;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -47,10 +61,19 @@ class MessageServiceImplTest {
     private ConversationParticipantRepository conversationParticipantRepository;
 
     @Mock
-    private com.Spring_chat.Web_chat.repository.MessageDeliveryStatusRepo messageDeliveryStatusRepo;
+    private MessageDeliveryStatusRepo messageDeliveryStatusRepo;
+
+    @Mock
+    private ConversationRepository conversationRepository;
 
     @Mock
     private CurrentUserProvider currentUserProvider;
+
+    @Mock
+    private StringRedisTemplate stringRedisTemplate;
+
+    @Mock
+    private ValueOperations<String, String> valueOperations;
 
     @InjectMocks
     private MessageServiceImpl messageService;
@@ -60,6 +83,7 @@ class MessageServiceImplTest {
     @BeforeEach
     void setUp() {
         currentUser = User.builder().id(1L).username("testuser").build();
+        given(stringRedisTemplate.opsForValue()).willReturn(valueOperations);
     }
 
     @Nested
@@ -243,5 +267,168 @@ class MessageServiceImplTest {
             verify(messageRepository).findMessagesByConversation(conversationId, currentUser.getId(), null, beforeId, org.springframework.data.domain.PageRequest.of(0, 101));
         }
 
+    }
+
+    @Nested
+    @DisplayName("sendMessage")
+    class SendMessage {
+        @Test
+        @DisplayName("Gửi TEXT thành công và tạo MessageStatus SENT cho active participants")
+        void sendMessage_TextSuccess() {
+            Long conversationId = 10L;
+            Conversation conversation = Conversation.builder()
+                    .id(conversationId)
+                    .type(ConversationType.GROUP)
+                    .status(ConversationStatus.ACTIVE)
+                    .build();
+
+            User user2 = User.builder().id(2L).username("u2").build();
+            ConversationParticipant p1 = ConversationParticipant.builder().conversation(conversation).user(currentUser).build();
+            ConversationParticipant p2 = ConversationParticipant.builder().conversation(conversation).user(user2).build();
+
+            SendMessageRequestDTO request = new SendMessageRequestDTO();
+            request.setType(MessageType.TEXT);
+            request.setContent("  hello  ");
+
+            Message saved = Message.builder()
+                    .id(100L)
+                    .conversation(conversation)
+                    .sender(currentUser)
+                    .content("hello")
+                    .type(MessageType.TEXT)
+                    .isDeleted(false)
+                    .isEdited(false)
+                    .createdAt(Instant.now())
+                    .build();
+
+            given(currentUserProvider.findCurrentUserOrThrow()).willReturn(currentUser);
+            given(conversationRepository.findById(conversationId)).willReturn(Optional.of(conversation));
+            given(conversationParticipantRepository.findByConversation_IdAndUser_IdAndLeftAtIsNull(conversationId, currentUser.getId()))
+                    .willReturn(Optional.of(p1));
+            given(messageRepository.save(org.mockito.ArgumentMatchers.any(Message.class))).willReturn(saved);
+            given(conversationParticipantRepository.findAllByConversation_IdAndLeftAtIsNull(conversationId))
+                    .willReturn(List.of(p1, p2));
+
+            ApiResponse<SendMessageResponseDTO> response = messageService.sendMessage(conversationId, request);
+
+            assertThat(response.isSuccess()).isTrue();
+            assertThat(response.getData().getId()).isEqualTo(100L);
+            assertThat(response.getData().getContent()).isEqualTo("hello");
+            verify(messageDeliveryStatusRepo, times(1)).saveAll(org.mockito.ArgumentMatchers.anyList());
+        }
+
+        @Test
+        @DisplayName("Không phải active participant thì FORBIDDEN")
+        void sendMessage_ForbiddenWhenNotActiveParticipant() {
+            Long conversationId = 10L;
+            Conversation conversation = Conversation.builder()
+                    .id(conversationId)
+                    .status(ConversationStatus.ACTIVE)
+                    .build();
+            SendMessageRequestDTO request = new SendMessageRequestDTO();
+            request.setContent("hello");
+
+            given(currentUserProvider.findCurrentUserOrThrow()).willReturn(currentUser);
+            given(conversationRepository.findById(conversationId)).willReturn(Optional.of(conversation));
+            given(conversationParticipantRepository.findByConversation_IdAndUser_IdAndLeftAtIsNull(conversationId, currentUser.getId()))
+                    .willReturn(Optional.empty());
+
+            assertThatThrownBy(() -> messageService.sendMessage(conversationId, request))
+                    .isInstanceOf(AppException.class)
+                    .extracting(e -> ((AppException) e).getErrorCode())
+                    .isEqualTo(ErrorCode.FORBIDDEN);
+        }
+
+        @Test
+        @DisplayName("Conversation INACTIVE thì BUSINESS_RULE_VIOLATED")
+        void sendMessage_RejectInactiveConversation() {
+            Long conversationId = 10L;
+            Conversation conversation = Conversation.builder()
+                    .id(conversationId)
+                    .status(ConversationStatus.INACTIVE)
+                    .build();
+            SendMessageRequestDTO request = new SendMessageRequestDTO();
+            request.setContent("hello");
+
+            given(currentUserProvider.findCurrentUserOrThrow()).willReturn(currentUser);
+            given(conversationRepository.findById(conversationId)).willReturn(Optional.of(conversation));
+
+            assertThatThrownBy(() -> messageService.sendMessage(conversationId, request))
+                    .isInstanceOf(AppException.class)
+                    .extracting(e -> ((AppException) e).getErrorCode())
+                    .isEqualTo(ErrorCode.BUSINESS_RULE_VIOLATED);
+        }
+
+        @Test
+        @DisplayName("Idempotency: request trùng trong 30s trả message cũ")
+        void sendMessage_DuplicateReturnsExisting() {
+            Long conversationId = 10L;
+            String clientMessageId = "retry-1";
+            Conversation conversation = Conversation.builder()
+                    .id(conversationId)
+                    .status(ConversationStatus.ACTIVE)
+                    .build();
+            ConversationParticipant p1 = ConversationParticipant.builder().conversation(conversation).user(currentUser).build();
+
+            SendMessageRequestDTO request = new SendMessageRequestDTO();
+            request.setType(MessageType.TEXT);
+            request.setContent("hello");
+            request.setClientMessageId(clientMessageId);
+
+            Message existing = Message.builder()
+                    .id(200L)
+                    .conversation(conversation)
+                    .sender(currentUser)
+                    .content("hello")
+                    .type(MessageType.TEXT)
+                    .isDeleted(false)
+                    .isEdited(false)
+                    .createdAt(Instant.now())
+                    .clientMessageId(clientMessageId)
+                    .build();
+
+            given(currentUserProvider.findCurrentUserOrThrow()).willReturn(currentUser);
+            given(conversationRepository.findById(conversationId)).willReturn(Optional.of(conversation));
+            given(conversationParticipantRepository.findByConversation_IdAndUser_IdAndLeftAtIsNull(conversationId, currentUser.getId()))
+                    .willReturn(Optional.of(p1));
+            given(valueOperations.setIfAbsent(anyString(), org.mockito.ArgumentMatchers.eq("PENDING"), org.mockito.ArgumentMatchers.any()))
+                    .willReturn(false);
+            given(messageRepository
+                    .findFirstByConversation_IdAndSender_IdAndClientMessageIdAndCreatedAtGreaterThanEqualOrderByCreatedAtDesc(
+                            org.mockito.ArgumentMatchers.eq(conversationId),
+                            org.mockito.ArgumentMatchers.eq(currentUser.getId()),
+                            org.mockito.ArgumentMatchers.eq(clientMessageId),
+                            org.mockito.ArgumentMatchers.any(Instant.class)))
+                    .willReturn(Optional.of(existing));
+
+            ApiResponse<SendMessageResponseDTO> response = messageService.sendMessage(conversationId, request);
+
+            assertThat(response.getData().getId()).isEqualTo(200L);
+            verify(messageRepository, never()).save(org.mockito.ArgumentMatchers.any(Message.class));
+        }
+
+        @Test
+        @DisplayName("IMAGE phải là URL http/https hợp lệ")
+        void sendMessage_RejectInvalidImageUrl() {
+            Long conversationId = 10L;
+            Conversation conversation = Conversation.builder()
+                    .id(conversationId)
+                    .status(ConversationStatus.ACTIVE)
+                    .build();
+            ConversationParticipant p1 = ConversationParticipant.builder().conversation(conversation).user(currentUser).build();
+            SendMessageRequestDTO request = new SendMessageRequestDTO();
+            request.setType(MessageType.IMAGE);
+            request.setContent("not-a-url");
+
+            given(currentUserProvider.findCurrentUserOrThrow()).willReturn(currentUser);
+            given(conversationRepository.findById(conversationId)).willReturn(Optional.of(conversation));
+            given(conversationParticipantRepository.findByConversation_IdAndUser_IdAndLeftAtIsNull(conversationId, currentUser.getId()))
+                    .willReturn(Optional.of(p1));
+
+            assertThatThrownBy(() -> messageService.sendMessage(conversationId, request))
+                    .isInstanceOf(AppException.class)
+                    .extracting(e -> ((AppException) e).getErrorCode())
+                    .isEqualTo(ErrorCode.BUSINESS_RULE_VIOLATED);
+        }
     }
 }
