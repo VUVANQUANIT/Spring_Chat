@@ -3,6 +3,8 @@ package com.Spring_chat.Web_chat.service.message;
 import com.Spring_chat.Web_chat.dto.ApiResponse;
 import com.Spring_chat.Web_chat.dto.message.MessageListResponseDTO;
 import com.Spring_chat.Web_chat.dto.message.MessageRowProjection;
+import com.Spring_chat.Web_chat.dto.message.ReadReceiptRequestDTO;
+import com.Spring_chat.Web_chat.dto.message.ReadReceiptResponseDTO;
 import com.Spring_chat.Web_chat.dto.message.SendMessageRequestDTO;
 import com.Spring_chat.Web_chat.dto.message.SendMessageResponseDTO;
 import com.Spring_chat.Web_chat.entity.Conversation;
@@ -48,6 +50,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.any;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -429,6 +432,101 @@ class MessageServiceImplTest {
                     .isInstanceOf(AppException.class)
                     .extracting(e -> ((AppException) e).getErrorCode())
                     .isEqualTo(ErrorCode.BUSINESS_RULE_VIOLATED);
+        }
+    }
+
+    @Nested
+    @DisplayName("markAsRead")
+    class MarkAsRead {
+        @Test
+        @DisplayName("Đánh dấu đã đọc thành công")
+        void markAsRead_Success() {
+            Long conversationId = 10L;
+            Long messageId = 99L;
+            Conversation conversation = Conversation.builder()
+                    .id(conversationId)
+                    .status(ConversationStatus.ACTIVE)
+                    .build();
+            Message message = Message.builder()
+                    .id(messageId)
+                    .conversation(conversation)
+                    .sender(currentUser)
+                    .content("hello")
+                    .type(MessageType.TEXT)
+                    .build();
+            ConversationParticipant participant = ConversationParticipant.builder()
+                    .conversation(conversation)
+                    .user(currentUser)
+                    .build();
+            ReadReceiptRequestDTO request = new ReadReceiptRequestDTO();
+            request.setLastReadMessageId(messageId);
+
+            given(currentUserProvider.findCurrentUserOrThrow()).willReturn(currentUser);
+            given(conversationParticipantRepository.findByConversation_IdAndUser_IdAndLeftAtIsNull(conversationId, currentUser.getId()))
+                    .willReturn(Optional.of(participant));
+            given(messageRepository.findById(messageId)).willReturn(Optional.of(message));
+            given(messageDeliveryStatusRepo.countUnreadMessages(currentUser.getId(), conversationId)).willReturn(0L);
+
+            ApiResponse<ReadReceiptResponseDTO> response = messageService.markAsRead(conversationId, request);
+
+            assertThat(response.isSuccess()).isTrue();
+            assertThat(response.getData().getConversationId()).isEqualTo(conversationId);
+            assertThat(response.getData().getLastReadMessageId()).isEqualTo(messageId);
+            assertThat(response.getData().getUnreadCount()).isZero();
+            assertThat(participant.getLastReadMessage()).isEqualTo(message);
+            verify(conversationParticipantRepository).save(participant);
+            verify(messageDeliveryStatusRepo).updateStatusToSeenForUserAndConversation(
+                    org.mockito.ArgumentMatchers.eq(currentUser.getId()),
+                    org.mockito.ArgumentMatchers.eq(conversationId),
+                    org.mockito.ArgumentMatchers.eq(messageId),
+                    org.mockito.ArgumentMatchers.any(Instant.class)
+            );
+        }
+
+        @Test
+        @DisplayName("Tin nhắn không thuộc conversation -> BUSINESS_RULE_VIOLATED")
+        void markAsRead_MessageNotInConversation() {
+            Long conversationId = 10L;
+            ReadReceiptRequestDTO request = new ReadReceiptRequestDTO();
+            request.setLastReadMessageId(99L);
+
+            Conversation otherConversation = Conversation.builder().id(20L).build();
+            Message otherMessage = Message.builder()
+                    .id(99L)
+                    .conversation(otherConversation)
+                    .sender(currentUser)
+                    .content("other")
+                    .type(MessageType.TEXT)
+                    .build();
+
+            given(currentUserProvider.findCurrentUserOrThrow()).willReturn(currentUser);
+            given(conversationParticipantRepository.findByConversation_IdAndUser_IdAndLeftAtIsNull(conversationId, currentUser.getId()))
+                    .willReturn(Optional.of(ConversationParticipant.builder().conversation(Conversation.builder().id(conversationId).build()).user(currentUser).build()));
+            given(messageRepository.findById(99L)).willReturn(Optional.of(otherMessage));
+
+            assertThatThrownBy(() -> messageService.markAsRead(conversationId, request))
+                    .isInstanceOf(AppException.class)
+                    .extracting(e -> ((AppException) e).getErrorCode())
+                    .isEqualTo(ErrorCode.BUSINESS_RULE_VIOLATED);
+        }
+
+        @Test
+        @DisplayName("Không phải active participant -> FORBIDDEN")
+        void markAsRead_ForbiddenWhenNotParticipant() {
+            Long conversationId = 10L;
+            ReadReceiptRequestDTO request = new ReadReceiptRequestDTO();
+            request.setLastReadMessageId(99L);
+
+            given(currentUserProvider.findCurrentUserOrThrow()).willReturn(currentUser);
+            given(conversationParticipantRepository.findByConversation_IdAndUser_IdAndLeftAtIsNull(conversationId, currentUser.getId()))
+                    .willReturn(Optional.empty());
+
+            assertThatThrownBy(() -> messageService.markAsRead(conversationId, request))
+                    .isInstanceOf(AppException.class)
+                    .extracting(e -> ((AppException) e).getErrorCode())
+                    .isEqualTo(ErrorCode.FORBIDDEN);
+
+            verify(messageRepository, never()).findById(any());
         }
     }
 }

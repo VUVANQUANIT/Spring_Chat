@@ -2,6 +2,8 @@ package com.Spring_chat.Web_chat.controller.message;
 
 import com.Spring_chat.Web_chat.dto.ApiResponse;
 import com.Spring_chat.Web_chat.dto.message.MessageListResponseDTO;
+import com.Spring_chat.Web_chat.dto.message.ReadReceiptRequestDTO;
+import com.Spring_chat.Web_chat.dto.message.ReadReceiptResponseDTO;
 import com.Spring_chat.Web_chat.dto.message.SendMessageRequestDTO;
 import com.Spring_chat.Web_chat.dto.message.SendMessageResponseDTO;
 import jakarta.validation.Valid;
@@ -44,6 +46,14 @@ public class MessageController {
             @Valid @RequestBody SendMessageRequestDTO request
     ) {
         return ResponseEntity.status(201).body(messageService.sendMessage(id, request));
+    }
+
+    @PostMapping("/{id}/read")
+    public ResponseEntity<ApiResponse<ReadReceiptResponseDTO>> markAsRead(
+            @PathVariable("id") Long id,
+            @Valid @RequestBody ReadReceiptRequestDTO request
+    ) {
+        return ResponseEntity.ok(messageService.markAsRead(id, request));
     }
 }
 
