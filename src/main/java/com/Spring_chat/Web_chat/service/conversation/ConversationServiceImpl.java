@@ -282,7 +282,7 @@ public class ConversationServiceImpl implements ConversationService {
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public ApiResponse<Void> removeParticipantFromConversation(Long conversationId, Long userId) {
         User currentUser = currentUserProvider.findCurrentUserOrThrow();
         // Lock conversation row to serialize owner-transfer decisions under concurrent leave/kick requests.
