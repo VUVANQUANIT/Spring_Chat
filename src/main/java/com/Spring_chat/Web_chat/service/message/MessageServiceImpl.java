@@ -1,6 +1,8 @@
 package com.Spring_chat.Web_chat.service.message;
 
 import com.Spring_chat.Web_chat.dto.ApiResponse;
+import com.Spring_chat.Web_chat.dto.message.DeliveredReceiptRequestDTO;
+import com.Spring_chat.Web_chat.dto.message.DeliveredReceiptResponseDTO;
 import com.Spring_chat.Web_chat.dto.message.DeliveryStatusesDTO;
 import com.Spring_chat.Web_chat.dto.message.MessageListResponseDTO;
 import com.Spring_chat.Web_chat.dto.message.MessageRowProjection;
@@ -49,6 +51,7 @@ import java.net.URI;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -270,6 +273,32 @@ public class MessageServiceImpl implements MessageService {
 
     @Override
     @Transactional
+    public ApiResponse<DeliveredReceiptResponseDTO> markAsDelivered(DeliveredReceiptRequestDTO request) {
+        User currentUser = currentUserProvider.findCurrentUserOrThrow();
+        List<Long> normalizedIds = normalizeDeliveredMessageIds(request.getMessageIds());
+        if (normalizedIds.isEmpty()) {
+            DeliveredReceiptResponseDTO empty = DeliveredReceiptResponseDTO.builder()
+                    .updatedCount(0)
+                    .build();
+            return ApiResponse.ok("Delivery status updated", empty);
+        }
+
+        int updatedCount = messageDeliveryStatusRepo.updateStatusToDeliveredForUserAndMessageIds(
+                currentUser.getId(),
+                normalizedIds,
+                Instant.now(),
+                MessageDeliveryStatus.SENT,
+                MessageDeliveryStatus.DELIVERED
+        );
+
+        DeliveredReceiptResponseDTO response = DeliveredReceiptResponseDTO.builder()
+                .updatedCount(updatedCount)
+                .build();
+        return ApiResponse.ok("Delivery status updated", response);
+    }
+
+    @Override
+    @Transactional
     public ApiResponse<ReadReceiptResponseDTO> markAsRead(Long conversationId, ReadReceiptRequestDTO request) {
         User currentUser = currentUserProvider.findCurrentUserOrThrow();
         Long userId = currentUser.getId();
@@ -405,6 +434,19 @@ public class MessageServiceImpl implements MessageService {
 
     private String normalizeContent(String content) {
         return content == null ? null : content.trim();
+    }
+
+    private List<Long> normalizeDeliveredMessageIds(List<Long> messageIds) {
+        if (messageIds == null || messageIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        LinkedHashSet<Long> unique = new LinkedHashSet<>();
+        for (Long id : messageIds) {
+            if (id != null && id > 0) {
+                unique.add(id);
+            }
+        }
+        return new ArrayList<>(unique);
     }
 
     private void validateMessageContent(MessageType type, String content) {

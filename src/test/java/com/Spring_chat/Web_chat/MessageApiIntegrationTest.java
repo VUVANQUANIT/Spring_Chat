@@ -134,6 +134,89 @@ class MessageApiIntegrationTest {
     }
 
     @Test
+    void markAsDelivered_ValidRequest_OnlySentToDelivered() throws Exception {
+        long conversationId = createGroupConversation(alice.token, "Delivered Team", bob.id, carol.id);
+        long messageSeen = sendTextMessage(alice.token, conversationId, "seen-first");
+        long messageDelivered = sendTextMessage(alice.token, conversationId, "delivered-next");
+
+        mockMvc.perform(post("/api/conversations/{id}/read", conversationId)
+                        .header("Authorization", "Bearer " + bob.token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "lastReadMessageId": %d
+                                }
+                                """.formatted(messageSeen)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/messages/delivered")
+                        .header("Authorization", "Bearer " + bob.token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "messageIds": [%d, %d]
+                                }
+                                """.formatted(messageSeen, messageDelivered)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("Delivery status updated"))
+                .andExpect(jsonPath("$.data.updatedCount").value(1));
+
+        mockMvc.perform(get("/api/conversations/{id}/messages", conversationId)
+                        .header("Authorization", "Bearer " + bob.token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].id").value(messageDelivered))
+                .andExpect(jsonPath("$.data.items[0].myStatus").value("DELIVERED"))
+                .andExpect(jsonPath("$.data.items[1].id").value(messageSeen))
+                .andExpect(jsonPath("$.data.items[1].myStatus").value("SEEN"));
+    }
+
+    @Test
+    void markAsDelivered_UnknownIds_UpdatedCountZero() throws Exception {
+        mockMvc.perform(post("/api/messages/delivered")
+                        .header("Authorization", "Bearer " + bob.token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "messageIds": [999991, 999992]
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.updatedCount").value(0));
+    }
+
+    @Test
+    void markAsDelivered_DuplicateIds_CountsOnce() throws Exception {
+        long conversationId = createGroupConversation(alice.token, "Dup Delivered Team", bob.id, carol.id);
+        long messageId = sendTextMessage(alice.token, conversationId, "dup");
+
+        mockMvc.perform(post("/api/messages/delivered")
+                        .header("Authorization", "Bearer " + bob.token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "messageIds": [%d, %d, %d]
+                                }
+                                """.formatted(messageId, messageId, messageId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.updatedCount").value(1));
+    }
+
+    @Test
+    void markAsDelivered_EmptyMessageIds_ReturnsBadRequest() throws Exception {
+        mockMvc.perform(post("/api/messages/delivered")
+                        .header("Authorization", "Bearer " + bob.token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "messageIds": []
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
     void updateMessage_SenderWithinWindow_Success() throws Exception {
         long conversationId = createGroupConversation(alice.token, "Edit Team", bob.id, carol.id);
         long messageId = sendTextMessage(alice.token, conversationId, "original");

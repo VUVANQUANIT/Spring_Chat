@@ -1,6 +1,8 @@
 package com.Spring_chat.Web_chat.service.message;
 
 import com.Spring_chat.Web_chat.dto.ApiResponse;
+import com.Spring_chat.Web_chat.dto.message.DeliveredReceiptRequestDTO;
+import com.Spring_chat.Web_chat.dto.message.DeliveredReceiptResponseDTO;
 import com.Spring_chat.Web_chat.dto.message.MessageListResponseDTO;
 import com.Spring_chat.Web_chat.dto.message.MessageRowProjection;
 import com.Spring_chat.Web_chat.dto.message.ReadReceiptRequestDTO;
@@ -449,6 +451,51 @@ class MessageServiceImplTest {
                     .isInstanceOf(AppException.class)
                     .extracting(e -> ((AppException) e).getErrorCode())
                     .isEqualTo(ErrorCode.BUSINESS_RULE_VIOLATED);
+        }
+    }
+
+    @Nested
+    @DisplayName("markAsDelivered")
+    class MarkAsDelivered {
+        @Test
+        @DisplayName("Chỉ chuyển SENT -> DELIVERED và trả updatedCount")
+        void markAsDelivered_Success() {
+            DeliveredReceiptRequestDTO request = new DeliveredReceiptRequestDTO();
+            request.setMessageIds(List.of(100L, 101L, 101L));
+            given(currentUserProvider.findCurrentUserOrThrow()).willReturn(currentUser);
+            given(messageDeliveryStatusRepo.updateStatusToDeliveredForUserAndMessageIds(
+                    org.mockito.ArgumentMatchers.eq(currentUser.getId()),
+                    org.mockito.ArgumentMatchers.eq(List.of(100L, 101L)),
+                    org.mockito.ArgumentMatchers.any(Instant.class),
+                    org.mockito.ArgumentMatchers.eq(MessageDeliveryStatus.SENT),
+                    org.mockito.ArgumentMatchers.eq(MessageDeliveryStatus.DELIVERED)
+            )).willReturn(2);
+
+            ApiResponse<DeliveredReceiptResponseDTO> response = messageService.markAsDelivered(request);
+
+            assertThat(response.isSuccess()).isTrue();
+            assertThat(response.getMessage()).isEqualTo("Delivery status updated");
+            assertThat(response.getData().getUpdatedCount()).isEqualTo(2);
+        }
+
+        @Test
+        @DisplayName("Danh sách rỗng sau normalize thì không gọi DB")
+        void markAsDelivered_EmptyAfterNormalize() {
+            DeliveredReceiptRequestDTO request = new DeliveredReceiptRequestDTO();
+            request.setMessageIds(new ArrayList<>(List.of(-1L)));
+            request.getMessageIds().add(null);
+            given(currentUserProvider.findCurrentUserOrThrow()).willReturn(currentUser);
+
+            ApiResponse<DeliveredReceiptResponseDTO> response = messageService.markAsDelivered(request);
+
+            assertThat(response.getData().getUpdatedCount()).isZero();
+            verify(messageDeliveryStatusRepo, never()).updateStatusToDeliveredForUserAndMessageIds(
+                    anyLong(),
+                    any(),
+                    any(Instant.class),
+                    any(),
+                    any()
+            );
         }
     }
 

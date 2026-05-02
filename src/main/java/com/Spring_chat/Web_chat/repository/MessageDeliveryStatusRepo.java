@@ -31,6 +31,23 @@ public interface MessageDeliveryStatusRepo extends JpaRepository<MessageStatus, 
             @Param("seenStatus") com.Spring_chat.Web_chat.enums.MessageDeliveryStatus seenStatus
     );
 
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            UPDATE MessageStatus ms
+            SET ms.status = :deliveredStatus,
+                ms.updatedAt = :updatedAt
+            WHERE ms.user.id = :userId
+              AND ms.status = :sentStatus
+              AND ms.message.id IN :messageIds
+            """)
+    int updateStatusToDeliveredForUserAndMessageIds(
+            @Param("userId") Long userId,
+            @Param("messageIds") List<Long> messageIds,
+            @Param("updatedAt") java.time.Instant updatedAt,
+            @Param("sentStatus") com.Spring_chat.Web_chat.enums.MessageDeliveryStatus sentStatus,
+            @Param("deliveredStatus") com.Spring_chat.Web_chat.enums.MessageDeliveryStatus deliveredStatus
+    );
+
     @Query("""
             SELECT COUNT(ms)
             FROM MessageStatus ms
