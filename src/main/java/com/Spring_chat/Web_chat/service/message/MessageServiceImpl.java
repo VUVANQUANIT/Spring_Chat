@@ -7,9 +7,12 @@ import com.Spring_chat.Web_chat.dto.message.MessageRowProjection;
 import com.Spring_chat.Web_chat.dto.message.MessageSummaryDTO;
 import com.Spring_chat.Web_chat.dto.message.ReadReceiptRequestDTO;
 import com.Spring_chat.Web_chat.dto.message.ReadReceiptResponseDTO;
+import com.Spring_chat.Web_chat.dto.message.EditedByDTO;
 import com.Spring_chat.Web_chat.dto.message.SendMessageRequestDTO;
 import com.Spring_chat.Web_chat.dto.message.SendMessageResponseDTO;
 import com.Spring_chat.Web_chat.dto.message.SenderDTO;
+import com.Spring_chat.Web_chat.dto.message.UpdateMessageRequestDTO;
+import com.Spring_chat.Web_chat.dto.message.UpdateMessageResponseDTO;
 import com.Spring_chat.Web_chat.entity.Conversation;
 import com.Spring_chat.Web_chat.entity.ConversationParticipant;
 import com.Spring_chat.Web_chat.entity.Message;
@@ -24,12 +27,15 @@ import com.Spring_chat.Web_chat.repository.ConversationParticipantRepository;
 import com.Spring_chat.Web_chat.repository.ConversationRepository;
 import com.Spring_chat.Web_chat.repository.MessageDeliveryStatusRepo;
 import com.Spring_chat.Web_chat.repository.MessageRepository;
+import com.Spring_chat.Web_chat.event.MessageEditedEvent;
 import com.Spring_chat.Web_chat.service.common.CurrentUserProvider;
+import com.Spring_chat.Web_chat.service.message.edit.MessageEditValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -55,6 +61,8 @@ public class MessageServiceImpl implements MessageService {
     private final MessageDeliveryStatusRepo messageDeliveryStatusRepo;
     private final CurrentUserProvider currentUserProvider;
     private final StringRedisTemplate stringRedisTemplate;
+    private final MessageEditValidator messageEditValidator;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     private static final Duration IDEMPOTENCY_TTL = Duration.ofSeconds(30);
     private static final String IDEMPOTENCY_PREFIX = "chat:idempotency:send-message:";
@@ -203,6 +211,53 @@ public class MessageServiceImpl implements MessageService {
             releaseIdempotencyKey(idempotencyKey);
             throw ex;
         }
+    }
+
+    @Override
+    @Transactional
+    public ApiResponse<UpdateMessageResponseDTO> updateMessage(Long messageId, UpdateMessageRequestDTO request) {
+        User currentUser = currentUserProvider.findCurrentUserOrThrow();
+        Long editorId = currentUser.getId();
+
+        Message message = messageRepository.findDetailedById(messageId)
+                .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND, "Tin nhắn không tồn tại"));
+
+        Conversation conversation = message.getConversation();
+        if (conversation.getStatus() != ConversationStatus.ACTIVE) {
+            throw new AppException(ErrorCode.BUSINESS_RULE_VIOLATED, "Cuộc hội thoại không còn hoạt động");
+        }
+
+        Long conversationId = conversation.getId();
+        conversationParticipantRepository
+                .findByConversation_IdAndUser_IdAndLeftAtIsNull(conversationId, editorId)
+                .orElseThrow(() -> new AppException(
+                        ErrorCode.FORBIDDEN,
+                        "Bạn không phải participant hợp lệ hoặc đã rời khỏi cuộc hội thoại"
+                ));
+
+        String normalizedContent = normalizeContent(request.getContent());
+        messageEditValidator.assertEditable(message, currentUser, normalizedContent);
+
+        Instant editedAt = Instant.now();
+        message.setContent(normalizedContent);
+        message.setIsEdited(true);
+        message.setEditedAt(editedAt);
+        message.setEditedBy(currentUser);
+        Message saved = messageRepository.save(message);
+
+        participantCache.put(editorId + ":" + conversationId, true);
+
+        applicationEventPublisher.publishEvent(new MessageEditedEvent(
+                saved.getId(),
+                conversationId,
+                saved.getContent(),
+                Boolean.TRUE.equals(saved.getIsEdited()),
+                saved.getEditedAt(),
+                currentUser.getId(),
+                currentUser.getUsername()
+        ));
+
+        return ApiResponse.ok("Message updated", toUpdateMessageResponse(saved, currentUser));
     }
 
     @Override
@@ -371,6 +426,32 @@ public class MessageServiceImpl implements MessageService {
         } catch (IllegalArgumentException ex) {
             return false;
         }
+    }
+
+    private UpdateMessageResponseDTO toUpdateMessageResponse(Message message, User editor) {
+        UpdateMessageResponseDTO dto = new UpdateMessageResponseDTO();
+        dto.setId(message.getId());
+        dto.setConversationId(message.getConversation().getId());
+
+        SenderDTO senderDTO = new SenderDTO();
+        senderDTO.setId(message.getSender().getId());
+        senderDTO.setUsername(message.getSender().getUsername());
+        senderDTO.setAvatarUrl(message.getSender().getAvatarUrl());
+        dto.setSender(senderDTO);
+
+        dto.setContent(Boolean.TRUE.equals(message.getIsDeleted()) ? null : message.getContent());
+        dto.setType(message.getType());
+        dto.setReplyTo(message.getReplyTo() == null ? null : message.getReplyTo().getId());
+        dto.setDeleted(Boolean.TRUE.equals(message.getIsDeleted()));
+        dto.setEdited(Boolean.TRUE.equals(message.getIsEdited()));
+        dto.setEditedAt(message.getEditedAt());
+        EditedByDTO editedBy = new EditedByDTO();
+        editedBy.setId(editor.getId());
+        editedBy.setUsername(editor.getUsername());
+        dto.setEditedBy(editedBy);
+        dto.setCreatedAt(message.getCreatedAt());
+        dto.setClientMessageId(message.getClientMessageId());
+        return dto;
     }
 
     private SendMessageResponseDTO toSendMessageResponse(Message message) {

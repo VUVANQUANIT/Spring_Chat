@@ -2,18 +2,24 @@ package com.Spring_chat.Web_chat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.Spring_chat.Web_chat.entity.Message;
+import com.Spring_chat.Web_chat.repository.MessageRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.UUID;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -31,6 +37,12 @@ class MessageApiIntegrationTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private MessageRepository messageRepository;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     private UserContext alice;
     private UserContext bob;
@@ -119,6 +131,154 @@ class MessageApiIntegrationTest {
                 .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
     }
 
+    @Test
+    void updateMessage_SenderWithinWindow_Success() throws Exception {
+        long conversationId = createGroupConversation(alice.token, "Edit Team", bob.id, carol.id);
+        long messageId = sendTextMessage(alice.token, conversationId, "original");
+
+        mockMvc.perform(patch("/api/messages/{id}", messageId)
+                        .header("Authorization", "Bearer " + alice.token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "content": "edited body" }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("Message updated"))
+                .andExpect(jsonPath("$.data.id").value(messageId))
+                .andExpect(jsonPath("$.data.conversationId").value(conversationId))
+                .andExpect(jsonPath("$.data.content").value("edited body"))
+                .andExpect(jsonPath("$.data.isEdited").value(true))
+                .andExpect(jsonPath("$.data.isDeleted").value(false))
+                .andExpect(jsonPath("$.data.editedBy.id").value(alice.id))
+                .andExpect(jsonPath("$.data.editedBy.username").value(alice.username))
+                .andExpect(jsonPath("$.data.sender.id").value(alice.id));
+    }
+
+    @Test
+    void updateMessage_NotSender_ReturnsForbidden() throws Exception {
+        long conversationId = createGroupConversation(alice.token, "Edit Perm Team", bob.id, carol.id);
+        long messageId = sendTextMessage(alice.token, conversationId, "alice only");
+
+        mockMvc.perform(patch("/api/messages/{id}", messageId)
+                        .header("Authorization", "Bearer " + bob.token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "content": "bob tries" }
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    @Test
+    void updateMessage_NotParticipant_ReturnsForbidden() throws Exception {
+        long conversationId = createGroupConversation(alice.token, "Outsider Team", bob.id, carol.id);
+        long messageId = sendTextMessage(alice.token, conversationId, "secret");
+
+        mockMvc.perform(patch("/api/messages/{id}", messageId)
+                        .header("Authorization", "Bearer " + dave.token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "content": "hack" }
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    @Test
+    void updateMessage_ImageType_ReturnsUnprocessable() throws Exception {
+        long conversationId = createGroupConversation(alice.token, "Img Team", bob.id, carol.id);
+        long messageId = sendImageMessage(alice.token, conversationId, "https://example.com/pic.png");
+
+        mockMvc.perform(patch("/api/messages/{id}", messageId)
+                        .header("Authorization", "Bearer " + alice.token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "content": "nope" }
+                                """))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("BUSINESS_RULE_VIOLATED"));
+    }
+
+    @Test
+    void updateMessage_SameContent_ReturnsUnprocessable() throws Exception {
+        long conversationId = createGroupConversation(alice.token, "Same Team", bob.id, carol.id);
+        long messageId = sendTextMessage(alice.token, conversationId, "unchanged");
+
+        mockMvc.perform(patch("/api/messages/{id}", messageId)
+                        .header("Authorization", "Bearer " + alice.token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "content": "unchanged" }
+                                """))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("BUSINESS_RULE_VIOLATED"));
+    }
+
+    @Test
+    void updateMessage_OutsideEditWindow_ReturnsUnprocessable() throws Exception {
+        long conversationId = createGroupConversation(alice.token, "Stale Team", bob.id, carol.id);
+        long messageId = sendTextMessage(alice.token, conversationId, "old");
+        Instant oldCreated = Instant.now().minusSeconds(31 * 60);
+        jdbcTemplate.update("UPDATE messages SET created_at = ? WHERE id = ?", Timestamp.from(oldCreated), messageId);
+
+        mockMvc.perform(patch("/api/messages/{id}", messageId)
+                        .header("Authorization", "Bearer " + alice.token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "content": "too late" }
+                                """))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("BUSINESS_RULE_VIOLATED"));
+    }
+
+    @Test
+    void updateMessage_DeletedMessage_ReturnsUnprocessable() throws Exception {
+        long conversationId = createGroupConversation(alice.token, "Del Team", bob.id, carol.id);
+        long messageId = sendTextMessage(alice.token, conversationId, "gone");
+        Message m = messageRepository.findById(messageId).orElseThrow();
+        m.setIsDeleted(true);
+        messageRepository.save(m);
+
+        mockMvc.perform(patch("/api/messages/{id}", messageId)
+                        .header("Authorization", "Bearer " + alice.token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "content": "revive" }
+                                """))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("BUSINESS_RULE_VIOLATED"));
+    }
+
+    @Test
+    void updateMessage_BlankContent_ReturnsBadRequest() throws Exception {
+        long conversationId = createGroupConversation(alice.token, "Blank Team", bob.id, carol.id);
+        long messageId = sendTextMessage(alice.token, conversationId, "x");
+
+        mockMvc.perform(patch("/api/messages/{id}", messageId)
+                        .header("Authorization", "Bearer " + alice.token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "content": "   " }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    void updateMessage_UnknownId_ReturnsNotFound() throws Exception {
+        createGroupConversation(alice.token, "Nf Team", bob.id, carol.id);
+
+        mockMvc.perform(patch("/api/messages/{id}", 999_999_999L)
+                        .header("Authorization", "Bearer " + alice.token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "content": "x" }
+                                """))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
+    }
+
     private long createGroupConversation(String token, String title, Long... participantIds) throws Exception {
         StringBuilder participantJson = new StringBuilder();
         for (int i = 0; i < participantIds.length; i++) {
@@ -155,6 +315,23 @@ class MessageApiIntegrationTest {
                                   "content": "%s"
                                 }
                                 """.formatted(content)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
+        return body.get("data").get("id").asLong();
+    }
+
+    private long sendImageMessage(String token, long conversationId, String imageUrl) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/conversations/{id}/messages", conversationId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "type": "IMAGE",
+                                  "content": "%s"
+                                }
+                                """.formatted(imageUrl)))
                 .andExpect(status().isCreated())
                 .andReturn();
 

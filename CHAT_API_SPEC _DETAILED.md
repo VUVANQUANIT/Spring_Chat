@@ -1100,7 +1100,15 @@ User chủ động rời khỏi nhóm hoặc chủ nhóm (`owner`) thực hiện
 
 ### 5.3 `PATCH /api/messages/{id}`
 
-**Mục tiêu:** Sửa nội dung tin nhắn (chỉ trong vòng 30 phút sau khi gửi).
+**Mục tiêu:** Sửa nội dung tin nhắn văn bản do chính người gửi tạo, trong cửa sổ **30 phút** kể từ `createdAt` (UTC, so sánh bằng `Instant` trên server).
+
+**Auth:** Bắt buộc JWT — xem [§0.3](#03-auth-header).
+
+**Path params:**
+
+| Param | Kiểu | Mô tả |
+|---|---|---|
+| `id` | Long | ID tin nhắn (`Message.id`) |
 
 **Request body:**
 
@@ -1110,7 +1118,13 @@ User chủ động rời khỏi nhóm hoặc chủ nhóm (`owner`) thực hiện
 }
 ```
 
-**Response: `200 OK`**
+**Validation:**
+
+| Field | Ràng buộc |
+|---|---|
+| `content` | Bắt buộc (NotBlank sau trim), độ dài tối đa **4000** ký tự (đồng nhất với [5.2](#52-post-apiconversationsidmessages)) |
+
+**Response: `200 OK`** — `ApiResponse<…>`; `data` trả về đủ thông tin để client cập nhật cache / UI mà không cần gọi lại [5.1](#51-get-apiconversationsidmessages).
 
 ```json
 {
@@ -1118,28 +1132,59 @@ User chủ động rời khỏi nhóm hoặc chủ nhóm (`owner`) thực hiện
   "message": "Message updated",
   "data": {
     "id": 102,
+    "conversationId": 5,
+    "sender": {
+      "id": 1,
+      "username": "john_doe",
+      "avatarUrl": "https://example.com/avatar.jpg"
+    },
     "content": "Hello World! (edited)",
+    "type": "TEXT",
+    "replyTo": null,
+    "isDeleted": false,
     "isEdited": true,
-    "editedAt": "2026-03-19T10:30:00.000Z"
+    "editedAt": "2026-03-19T10:30:00.000Z",
+    "editedBy": {
+      "id": 1,
+      "username": "john_doe"
+    },
+    "createdAt": "2026-03-19T10:15:00.000Z",
+    "clientMessageId": "uuid-v4-client-generated"
   },
   "timestamp": "2026-03-19T10:30:00.000Z"
 }
 ```
 
+| Field trong `data` | Ghi chú |
+|---|---|
+| `editedAt` | Thời điểm sửa **lần này** (UTC) |
+| `editedBy` | User thực hiện sửa; thông thường trùng `sender`, nhưng field vẫn có để mở rộng policy sau này |
+| `clientMessageId` | Giữ nguyên như lúc gửi (nếu có); `null` nếu tin cũ không có |
+
 **Business rules:**
-- Chỉ người gửi (`sender`) mới được sửa.
-- `now <= message.createdAt + 30 phút` → nếu quá → `422 BUSINESS_RULE_VIOLATED`.
-- Chỉ được sửa tin loại `TEXT` (không sửa `IMAGE`, `SYSTEM`).
-- Sau khi sửa: `isEdited = true`, `editedAt = now`.
-- Push realtime event `MESSAGE_EDITED` đến `/topic/conversations/{conversationId}`.
+- `editorId` = `currentUser.id` từ JWT (không nhận user id từ body) — xem `CurrentUserProvider` / GEMINI §8.
+- `currentUser` phải là **participant** của `message.conversation` và **chưa rời** (`leftAt == null`), giống [5.2](#52-post-apiconversationsidmessages).
+- Chỉ **`sender`** của tin nhắn được phép sửa → nếu không: `403 FORBIDDEN`.
+- Cửa sổ thời gian: `Instant.now() <= message.createdAt + 30 minutes` — hết hạn: `422 BUSINESS_RULE_VIOLATED`.
+- Chỉ sửa tin loại **`TEXT`**. Tin **`IMAGE`**, **`SYSTEM`**, hoặc loại khác không được sửa → `422 BUSINESS_RULE_VIOLATED`.
+- Tin đã **xóa mềm** (`isDeleted = true`, nội dung ẩn với mọi người) **không** được sửa → `422 BUSINESS_RULE_VIOLATED`.
+- Nội dung mới **không** được trùng hệt nội dung hiện tại sau trim (tránh no-op spam) → `422 BUSINESS_RULE_VIOLATED` hoặc `200` idempotent tùy policy BE; khuyến nghị: **422** với message rõ ràng để FE không bắn WS thừa.
+- Sau khi lưu: `isEdited = true`, `editedAt = now`, `editedBy = currentUser`.
+- **Realtime:** broadcast event `MESSAGE_EDITED` tới `/topic/conversations/{conversationId}` — cấu trúc payload xem [§8.4 MESSAGE_EDITED](#84-event-payload-từ-server--client); các field trong `data` nên khớp với REST `data` ở trên (gồm `editedBy`).
+- **STOMP:** Client có thể dùng `/app/messages.edit` ([§8.3](#83-gửi-events-từ-client-stomp-send)) thay cho REST; server xử lý một luồng nghiệp vụ để tránh lệch rule.
+- **Concurrency:** hai request sửa cùng một tin gần như đồng thời — kết quả cuối phụ thuộc transaction (last commit wins); không yêu cầu optimistic lock trừ khi sau này bổ sung `@Version`.
 
 **Lỗi:**
 
-| Code | Trường hợp |
-|---|---|
-| `403 FORBIDDEN` | Không phải người gửi |
-| `404 RESOURCE_NOT_FOUND` | Message không tồn tại |
-| `422 BUSINESS_RULE_VIOLATED` | Quá 30 phút / message đã bị xóa / type không phải TEXT |
+| Code | HTTP | Trường hợp |
+|---|---|---|
+| `VALIDATION_FAILED` | 400 | `content` blank / chỉ khoảng trắng / vượt quá 4000 ký tự |
+| `UNAUTHORIZED` | 401 | Thiếu hoặc sai JWT |
+| `FORBIDDEN` | 403 | Không phải participant / đã rời nhóm, hoặc không phải `sender` |
+| `RESOURCE_NOT_FOUND` | 404 | `id` không tồn tại |
+| `BUSINESS_RULE_VIOLATED` | 422 | Quá 30 phút; tin đã `isDeleted`; `type` không phải `TEXT`; nội dung mới trùng nội dung cũ (nếu BE chọn rule này) |
+
+> Chi tiết format lỗi (`traceId`, `errors[]`, …): [§0.5](#05-format-response--lỗi) và `API_ERROR_SPEC.md`.
 
 ---
 
@@ -1420,6 +1465,8 @@ Gửi đến `/topic/conversations/{id}` khi có tin nhắn mới.
 
 #### `MESSAGE_EDITED`
 
+Gửi đến `/topic/conversations/{id}` sau khi sửa tin thành công (REST [§5.3](#53-patch-apimessagesid) hoặc STOMP `/app/messages.edit`).
+
 ```json
 {
   "event": "MESSAGE_EDITED",
@@ -1428,7 +1475,11 @@ Gửi đến `/topic/conversations/{id}` khi có tin nhắn mới.
     "conversationId": 5,
     "content": "Edited content",
     "isEdited": true,
-    "editedAt": "2026-03-19T10:30:00.000Z"
+    "editedAt": "2026-03-19T10:30:00.000Z",
+    "editedBy": {
+      "id": 1,
+      "username": "john_doe"
+    }
   }
 }
 ```

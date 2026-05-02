@@ -16,6 +16,15 @@ import java.util.Optional;
 
 @Repository
 public interface MessageRepository extends JpaRepository<Message, Long> {
+
+    @Query("""
+            SELECT m FROM Message m
+            JOIN FETCH m.conversation
+            JOIN FETCH m.sender
+            LEFT JOIN FETCH m.replyTo
+            WHERE m.id = :id
+            """)
+    Optional<Message> findDetailedById(@Param("id") Long id);
     @Query(value = """
         SELECT 
             m.id, m.conversation_id as conversationId, m.content, m.type, 
