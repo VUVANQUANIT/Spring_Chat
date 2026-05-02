@@ -2,17 +2,21 @@ package com.Spring_chat.Web_chat.repository;
 
 import com.Spring_chat.Web_chat.dto.conversations.ConversationRowProjection;
 import com.Spring_chat.Web_chat.entity.ConversationParticipant;
+import com.Spring_chat.Web_chat.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.List;
 
 public interface ConversationParticipantRepository extends JpaRepository<ConversationParticipant, Long> {
     List<ConversationParticipant> findByConversation_Id(Long conversationId);
+    List<ConversationParticipant> findAllByConversation_IdAndLeftAtIsNull(Long conversationId);
     List<ConversationParticipant> findByUser_Id(Long userId);
     List<ConversationParticipant> findAllByConversation_IdOrderByJoinedAtAsc(Long conversationId);
-    boolean existsByConversation_IdAndUser_Id(Long conversationId, Long userId);
+    boolean existsByConversation_IdAndUser_IdAndLeftAtIsNull(Long conversationId, Long userId);
 
     /**
      * Lấy danh sách conversations của user theo inbox order (cursor-based pagination).
@@ -62,7 +66,7 @@ public interface ConversationParticipantRepository extends JpaRepository<Convers
                 CASE WHEN c.type = 'PRIVATE' THEN u2.username    ELSE NULL END AS "otherUsername",
                 CASE WHEN c.type = 'PRIVATE' THEN u2.avatar_url  ELSE NULL END AS "otherAvatarUrl",
                 CASE
-                    WHEN c.type = 'PRIVATE' AND u2.last_seen > NOW() - INTERVAL '5 minutes' THEN TRUE
+                    WHEN c.type = 'PRIVATE' AND u2.last_seen > :onlineThreshold THEN TRUE
                     WHEN c.type = 'PRIVATE' THEN FALSE
                     ELSE NULL
                 END                                                     AS "isOnline"
@@ -86,15 +90,26 @@ public interface ConversationParticipantRepository extends JpaRepository<Convers
             LEFT JOIN users u2  ON u2.id = cp2.user_id
             WHERE cp.user_id = :userId
               AND (
-                      CAST(:cursor AS timestamptz) IS NULL
-                      OR COALESCE(m.created_at, c.created_at) < CAST(:cursor AS timestamptz)
+                      :cursor IS NULL
+                      OR COALESCE(m.created_at, c.created_at) < :cursor
                   )
             ORDER BY COALESCE(m.created_at, c.created_at) DESC, c.id DESC
             LIMIT :limit
             """, nativeQuery = true)
-    List<ConversationRowProjection> findUserConversations(
+            List<ConversationRowProjection> findUserConversations(
             @Param("userId") Long   userId,
-            @Param("cursor") String cursor,
-            @Param("limit")  int    limit
-    );
+            @Param("cursor") OffsetDateTime cursor,
+            @Param("limit")  int    limit,
+            @Param("onlineThreshold") Instant onlineThreshold
+            );
+
+    ConversationParticipant findByConversation_IdAndUser(Long conversationId, User user);
+    java.util.Optional<ConversationParticipant> findByConversation_IdAndUser_Id(Long conversationId, Long userId);
+    java.util.Optional<ConversationParticipant> findByConversation_IdAndUser_IdAndLeftAtIsNull(Long conversationId, Long userId);
+
+    java.util.Optional<ConversationParticipant> findFirstByConversation_IdAndLeftAtIsNullOrderByJoinedAtAsc(Long conversationId);
+
+    java.util.Optional<ConversationParticipant> findFirstByConversation_IdAndUser_IdNotAndLeftAtIsNullOrderByJoinedAtAsc(Long conversationId, Long userId);
+
+    boolean existsByConversation_IdAndUser_IdNotAndLeftAtIsNull(Long conversationId, Long userId);
 }

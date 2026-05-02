@@ -8,8 +8,12 @@ import com.Spring_chat.Web_chat.dto.user.UpdateMyProfileRequestDTO;
 import com.Spring_chat.Web_chat.dto.user.UserSearchResponseDTO;
 import com.Spring_chat.Web_chat.service.user.UserService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -21,6 +25,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/users")
+@Validated
 public class ProfileController {
 
     private final UserService userService;
@@ -37,18 +42,13 @@ public class ProfileController {
         return ResponseEntity.ok(userService.updateMyProfile(request));
     }
 
-    /**
-     * Tìm kiếm user theo username hoặc fullName.
-     *
-     * GET /api/users/search?q=alice&page=0&size=20
-     *
-     * Endpoint này phải đặt TRÊN /{id} để tránh Spring match "search" như một path variable.
-     */
     @GetMapping("/search")
     public ResponseEntity<ApiResponse<PageResponse<UserSearchResponseDTO>>> searchUsers(
-            @RequestParam String q,
-            @RequestParam(defaultValue = "0")  int page,
-            @RequestParam(defaultValue = "20") int size
+            @RequestParam
+            @Size(min = 2, max = 100, message = "Search query must be between 2 and 100 characters")
+            String q,
+            @RequestParam(defaultValue = "0")  @Min(0)        int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size
     ) {
         return ResponseEntity.ok(userService.searchUsers(q, page, size));
     }

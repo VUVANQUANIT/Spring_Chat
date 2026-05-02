@@ -25,7 +25,7 @@ public class RegisterRequestDTO {
     private String email;
 
     @NotBlank(message = "Full name is required")
-    @Size(max = 100,message = "Full name must not exceed 100 characters")
+    @Size(max = 100, message = "Full name must not exceed 100 characters")
     private String fullName;
 
     @NotBlank(message = "Password is required")

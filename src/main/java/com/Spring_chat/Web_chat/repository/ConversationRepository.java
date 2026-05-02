@@ -2,13 +2,19 @@ package com.Spring_chat.Web_chat.repository;
 
 import com.Spring_chat.Web_chat.entity.Conversation;
 import com.Spring_chat.Web_chat.enums.ConversationType;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.Optional;
 
 public interface ConversationRepository extends JpaRepository<Conversation, Long> {
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select c from Conversation c where c.id = :id")
+    Optional<Conversation> findByIdForUpdate(@Param("id") Long id);
+
     @Query("""
         select c from Conversation c
         where c.type = :type

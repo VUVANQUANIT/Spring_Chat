@@ -65,13 +65,8 @@ public class AuthController {
         authService.logout(principal.id());
     }
 
-    // ─── Helpers ──────────────────────────────────────────────────────────────
-
     private String extractClientIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
-        }
+        // TODO: enable trusted proxy mode later if we use a standard reverse proxy (e.g. ForwardedHeaderFilter)
         return request.getRemoteAddr();
     }
 }

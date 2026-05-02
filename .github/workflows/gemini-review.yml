@@ -1,0 +1,287 @@
+name: Gemini AI Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main, dev]
+
+# Tự hủy run cũ khi dev push thêm commit vào cùng PR — tiết kiệm token
+concurrency:
+  group: gemini-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    name: AI Code Review
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -q -U google-generativeai
+
+      # ─── Chọn model dựa trên label PR ────────────────────────────────────────
+      # Mặc định: gemini-2.5-flash (nhanh, miễn phí, context lớn)
+      # Label "needs-deep-review": leo lên gemini-2.5-pro
+      # ─────────────────────────────────────────────────────────────────────────
+      - name: Determine review mode
+        id: review_mode
+        run: |
+          # Dùng heredoc để tránh lỗi escape shell nếu label có ký tự đặc biệt
+          cat <<'EOF' > labels.json
+          ${{ toJson(github.event.pull_request.labels.*.name) }}
+          EOF
+          
+          if grep -q "needs-deep-review" labels.json; then
+            echo "mode=deep" >> $GITHUB_OUTPUT
+          else
+            echo "mode=fast" >> $GITHUB_OUTPUT
+          fi
+          rm labels.json
+
+      - name: Get PR diff and changed file list
+        id: get_diff
+        run: |
+          git diff ${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }} > pr_diff.txt
+          git diff --name-only ${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }} > changed_files.txt
+          echo "diff_bytes=$(wc -c < pr_diff.txt)" >> $GITHUB_OUTPUT
+          echo "file_count=$(wc -l < changed_files.txt)" >> $GITHUB_OUTPUT
+          echo "==> Changed files:"
+          cat changed_files.txt
+
+      - name: Run Gemini Review
+        id: gemini_review
+        continue-on-error: true
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          REVIEW_MODE: ${{ steps.review_mode.outputs.mode }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          BASE_BRANCH: ${{ github.base_ref }}
+          HEAD_BRANCH: ${{ github.head_ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          python << 'PYEOF'
+          import os
+          import textwrap
+          import google.generativeai as genai
+
+          api_key = os.environ.get("GEMINI_API_KEY")
+          if not api_key:
+              with open("review_result.md", "w", encoding="utf-8") as f:
+                  f.write("⚠️ `GEMINI_API_KEY` chưa được cấu hình trong GitHub Secrets.")
+              exit(0)
+
+          genai.configure(api_key=api_key)
+
+          review_mode = os.environ.get("REVIEW_MODE", "fast")
+
+          # ─── Fallback chain theo mode ─────────────────────────────────────────
+          # fast  : flash làm chính, flash fallback
+          # deep  : pro làm chính, fallback xuống flash nếu pro lỗi
+          # ─────────────────────────────────────────────────────────────────────
+          if review_mode == "deep":
+              model_chain = [
+                  "gemini-3.1-pro-preview",
+                  "gemini-3-pro-preview",
+                  "gemini-2.5-pro",
+              ]
+              mode_label = "🔍 **Deep Review** (Gemini 3.1 Pro)"
+          else:
+              model_chain = [
+                  "gemini-3.1-flash-lite-preview",
+                  "gemini-3-flash-preview",
+                  "gemini-2.5-flash",
+              ]
+              mode_label = "⚡ **Fast Review** (Gemini 3.1 Flash Lite)"
+
+          # ─── Đọc diff và danh sách file ──────────────────────────────────────
+          try:
+              with open("pr_diff.txt", "r", encoding="utf-8", errors="replace") as f:
+                  diff_content = f.read()
+              with open("changed_files.txt", "r", encoding="utf-8") as f:
+                  changed_files = f.read().strip()
+          except Exception as e:
+              with open("review_result.md", "w", encoding="utf-8") as f:
+                  f.write(f"⚠️ Không đọc được file diff: `{e}`")
+              exit(0)
+
+          if len(diff_content.strip()) < 10:
+              with open("review_result.md", "w", encoding="utf-8") as f:
+                  f.write("ℹ️ Không có thay đổi đáng kể để review.")
+              exit(0)
+
+          pr_title  = os.environ.get("PR_TITLE", "N/A")
+          pr_author = os.environ.get("PR_AUTHOR", "N/A")
+          base_ref  = os.environ.get("BASE_BRANCH", "main")
+          head_ref  = os.environ.get("HEAD_BRANCH", "")
+
+          prompt_raw = f"""
+          Bạn là một Senior Software Engineer và Architect chuyên nghiệp, đang review Pull Request cho dự án **Spring Boot (Java)**.
+
+          ## Thông tin PR
+          | | |
+          |---|---|
+          | **Tiêu đề** | {pr_title} |
+          | **Tác giả** | {pr_author} |
+          | **Merge vào** | `{base_ref}` ← `{head_ref}` |
+
+          ## File thay đổi
+          ```
+          {changed_files}
+          ```
+
+          ## Nội dung Diff (toàn bộ)
+          ```diff
+          {diff_content}
+          ```
+
+          ---
+
+          ## Hướng dẫn review
+
+          Phân tích theo 5 tiêu chí sau:
+          1. **Lỗi Logic & Bug** — Edge cases, sai luồng nghiệp vụ, race condition, off-by-one.
+          2. **Bảo mật** — SQL Injection, lộ thông tin nhạy cảm, lỗi phân quyền (RBAC/ABAC), XSS.
+          3. **Hiệu năng** — N+1 query (JPA/Hibernate), vòng lặp thừa, rò rỉ tài nguyên, blocking call.
+          4. **Clean Code & SOLID** — Naming, độ phức tạp hàm, dead code, vi phạm SRP/OCP.
+          5. **Test Coverage** — Thiếu unit test quan trọng, edge case chưa được cover.
+
+          **CHÚ Ý ĐẶC BIỆT (CONTEXT DỰ ÁN 2026):**
+          - Dự án sử dụng **Spring Boot v4.x** và **Spring Framework v7.x**. ĐÂY LÀ PHIÊN BẢN CHÍNH XÁC. KHÔNG ĐƯỢC PHÉP báo lỗi hay cảnh báo rằng "Spring Boot v4 chưa release" hay "chưa tồn tại".
+          - Mọi field trong JSON Response BẮT BUỘC phải dùng `camelCase`. Nếu thấy `snake_case`, hãy đánh dấu là lỗi Medium.
+          - Chú ý đến TimeZone khi dùng `OffsetDateTime` chuyển sang `Instant` (UTC).
+
+          ## Định dạng phản hồi BẮT BUỘC
+
+          Trả về đúng cấu trúc Markdown sau, **không thêm bớt tiêu đề**:
+          
+          ### 📊 Tổng quan
+          [1–3 câu nhận xét tổng quan: mục tiêu PR, chất lượng tổng thể, rủi ro chính nếu có]
+          ## Thông tin PR
+          | **Tiêu đề** |  |
+          | **Tác giả** |  |
+          | **Merge vào** |  |
+          ### 🔴 Critical — Cần sửa ngay trước khi merge
+          [Mỗi finding: **File** `path/to/File.java`, mô tả vấn đề + đoạn code liên quan + gợi ý sửa cụ thể]
+          [Nếu không có: ghi `Không có.`]
+
+          ### 🟠 High — Nên sửa trong PR này
+          [Tương tự Critical]
+          [Nếu không có: ghi `Không có.`]
+
+          ### 🟡 Medium — Nên xem xét
+          [Tương tự Critical]
+          [Nếu không có: ghi `Không có.`]
+
+          ### 🟢 Low / Suggestions
+          [Gợi ý nhỏ về style, naming, clean code]
+          [Nếu không có: ghi `Không có.`]
+
+          ### ✅ Điểm tốt
+          [1–3 điểm đáng khen trong PR: design tốt, test đầy đủ, naming rõ ràng, v.v.]
+
+          ---
+
+          **Lưu ý:** Ngôn ngữ Tiếng Việt, ngắn gọn, chuyên nghiệp. Mỗi finding phải chỉ rõ file và đoạn code cụ thể.
+          """
+          prompt = textwrap.dedent(prompt_raw).strip()
+
+          # ─── Thử lần lượt từng model theo chain ──────────────────────────────
+          review_text = None
+          used_model  = None
+          last_error  = None
+
+          for model_name in model_chain:
+              try:
+                  print(f"==> Trying model: {model_name}")
+                  model    = genai.GenerativeModel(model_name)
+                  response = model.generate_content(prompt)
+                  review_text = response.text
+                  used_model  = model_name
+                  print(f"==> Success with model: {model_name}")
+                  break
+              except Exception as e:
+                  last_error = e
+                  print(f"==> Model {model_name} failed: {e}")
+
+          if not review_text:
+              review_text = (
+                  f"❌ Tất cả model đều thất bại. Lỗi cuối: `{last_error}`\n\n"
+                  f"Vui lòng kiểm tra lại `GEMINI_API_KEY` hoặc thử lại sau."
+              )
+              used_model = "N/A"
+
+          footer = (
+              f"\n\n---\n"
+              f"*{mode_label} | Model: `{used_model}`*"
+          )
+
+          with open("review_result.md", "w", encoding="utf-8") as f:
+              f.write(review_text + footer)
+
+          print("==> Review written to review_result.md")
+          PYEOF
+
+      # ─── Upsert comment: cập nhật comment cũ thay vì tạo mới mỗi lần push ──
+      - name: Upsert Review Comment
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+
+            let reviewBody;
+            try {
+              reviewBody = fs.readFileSync('review_result.md', 'utf8');
+            } catch (e) {
+              console.log('review_result.md not found, skipping comment.');
+              return;
+            }
+
+            // Marker ẩn để nhận ra comment của bot khi muốn update
+            const BOT_MARKER  = '<!-- gemini-review-bot -->';
+            const HEADER      = '### 🤖 Gemini AI Code Review\n\n';
+            const finalBody   = `${BOT_MARKER}\n${HEADER}${reviewBody}`;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              issue_number: context.issue.number,
+              owner:        context.repo.owner,
+              repo:         context.repo.repo,
+            });
+
+            const existing = comments.find(c => c.body && c.body.includes(BOT_MARKER));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                comment_id: existing.id,
+                owner:      context.repo.owner,
+                repo:       context.repo.repo,
+                body:       finalBody,
+              });
+              console.log(`Updated existing review comment #${existing.id}`);
+            } else {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner:        context.repo.owner,
+                repo:         context.repo.repo,
+                body:         finalBody,
+              });
+              console.log('Created new review comment');
+            }

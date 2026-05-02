@@ -48,6 +48,9 @@ public class Message {
     @Column(name = "content", nullable = false)
     private String content;
 
+    @Column(name = "client_message_id", length = 100)
+    private String clientMessageId;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "type", nullable = false, length = 20)
     @Builder.Default
@@ -60,6 +63,24 @@ public class Message {
     @Column(name = "is_deleted", nullable = false)
     @Builder.Default
     private Boolean isDeleted = false;
+
+    @Column(name = "is_edited", nullable = false)
+    @Builder.Default
+    private Boolean isEdited = false;
+
+    @Column(name = "edited_at")
+    private Instant editedAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "edited_by")
+    private User editedBy;
+
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "deleted_by")
+    private User deletedBy;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)

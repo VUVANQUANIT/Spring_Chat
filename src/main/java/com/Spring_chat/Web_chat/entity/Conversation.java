@@ -1,5 +1,6 @@
 package com.Spring_chat.Web_chat.entity;
 
+import com.Spring_chat.Web_chat.enums.ConversationStatus;
 import com.Spring_chat.Web_chat.enums.ConversationType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -51,6 +52,11 @@ public class Conversation {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "owner_id")
     private User owner;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 20)
+    @Builder.Default
+    private ConversationStatus status = ConversationStatus.ACTIVE;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)

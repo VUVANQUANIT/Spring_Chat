@@ -1,0 +1,15 @@
+package com.Spring_chat.Web_chat.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+import java.time.Clock;
+
+@Configuration
+public class ClockConfiguration {
+
+    @Bean
+    public Clock systemUtcClock() {
+        return Clock.systemUTC();
+    }
+}
